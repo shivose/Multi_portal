@@ -5,11 +5,10 @@
   /** Survives refresh in the same tab; cleared on Log out (not tab close). */
   const SESSION_AUTH_KEY = "multiLoginPortal_session_v1";
 
-  const ROLE_KEYS = ["field", "xyz", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"];
+  const ROLE_KEYS = ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"];
 
   const ROLE_LABELS = {
     field: "Work report (field)",
-    xyz: "XYZ portal",
     survey: "Employee survey",
     process: "Kitchen / recipes (process)",
     dashboard: "Dashboard",
@@ -19,24 +18,7 @@
     admin: "Administration",
   };
 
-  const ROLE_PICKER_ORDER = ["field", "xyz", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", "admin"];
-
-  function isWorkReportRole(role) {
-    return role === "field" || role === "xyz";
-  }
-
-  /** DOM id prefix: `field-*` vs `xyz-*` */
-  function workReportDomPrefix(role) {
-    return role === "xyz" ? "xyz" : "field";
-  }
-
-  function workReportEntriesStateKey(role) {
-    return role === "xyz" ? "xyzEntries" : "fieldEntries";
-  }
-
-  function workReportWorkDoneInputName(role) {
-    return `${workReportDomPrefix(role)}_work_done`;
-  }
+  const ROLE_PICKER_ORDER = ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", "admin"];
 
   const PROCESS_CATEGORY_LABELS = {
     appetizer: "Appetizer",
@@ -114,8 +96,10 @@
 
   const defaultState = () => ({
     credentials: {
-      field: [{ username: "worker", password: "worker123" }],
-      xyz: [{ username: "xyz", password: "xyz123" }],
+      field: [
+        { username: "worker", password: "worker123" },
+        { username: "xyz", password: "xyz123" },
+      ],
       survey: [{ username: "survey", password: "survey123" }],
       process: [{ username: "process", password: "process123" }],
       dashboard: [{ username: "manager", password: "manager123" }],
@@ -125,7 +109,6 @@
       admin: { username: "admin", password: "admin123" },
     },
     fieldEntries: [],
-    xyzEntries: [],
     surveyEntries: [],
     processEntries: [],
     reminders: [],
@@ -193,7 +176,7 @@
     const instructions = raw.instructions != null ? String(raw.instructions).trim() : "";
     if (!targetUsername || !instructions) return null;
     let scope = raw.scope != null ? String(raw.scope).trim() : "all";
-    const core = new Set(["all", "field", "xyz", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"]);
+    const core = new Set(["all", "field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"]);
     if (!core.has(scope) && !(typeof scope === "string" && scope.startsWith("cp_"))) scope = "all";
     const at = raw.assignedAt ? new Date(raw.assignedAt).getTime() : NaN;
     const assignedAt = !Number.isNaN(at) ? new Date(at).toISOString() : new Date().toISOString();
@@ -354,7 +337,6 @@
         ...parsed,
         credentials: {
           field: normalizeRoleCredentialList(pc.field, base.credentials.field),
-          xyz: normalizeRoleCredentialList(pc.xyz, base.credentials.xyz),
           survey: normalizeRoleCredentialList(pc.survey, base.credentials.survey),
           process: normalizeRoleCredentialList(pc.process, base.credentials.process),
           dashboard: normalizeRoleCredentialList(pc.dashboard, base.credentials.dashboard),
@@ -456,7 +438,7 @@
 
   (function migrateDashboardEntryTimes() {
     let dirty = false;
-    ["fieldEntries", "xyzEntries", "surveyEntries", "processEntries"].forEach((key) => {
+    ["fieldEntries", "surveyEntries", "processEntries"].forEach((key) => {
       const arr = state[key];
       if (!Array.isArray(arr)) return;
       arr.forEach((entry) => {
@@ -493,12 +475,6 @@
   (function migrateEntryIdsAndReminderCreatedAt() {
     let dirty = false;
     (state.fieldEntries || []).forEach((e) => {
-      if (!e.id) {
-        e.id = entryId();
-        dirty = true;
-      }
-    });
-    (state.xyzEntries || []).forEach((e) => {
       if (!e.id) {
         e.id = entryId();
         dirty = true;
@@ -553,6 +529,39 @@
     if (dirty) saveState(state);
   })();
 
+  (function mergeLegacyXyzIntoFieldPortal() {
+    let dirty = false;
+    const cred = state.credentials || {};
+    if (cred.xyz != null) {
+      const fieldArr = normalizeRoleCredentialList(cred.field, defaultState().credentials.field);
+      const xyzArr = normalizeRoleCredentialList(cred.xyz, []);
+      const seen = new Set(fieldArr.map((c) => (c.username || "").trim().toLowerCase()).filter(Boolean));
+      xyzArr.forEach((c) => {
+        const k = (c.username || "").trim().toLowerCase();
+        if (k && !seen.has(k)) {
+          fieldArr.push({ username: c.username.trim(), password: c.password });
+          seen.add(k);
+        }
+      });
+      state.credentials.field = fieldArr;
+      delete state.credentials.xyz;
+      dirty = true;
+    }
+    if (Array.isArray(state.xyzEntries) && state.xyzEntries.length > 0) {
+      if (!Array.isArray(state.fieldEntries)) state.fieldEntries = [];
+      state.fieldEntries = state.fieldEntries.concat(state.xyzEntries);
+      delete state.xyzEntries;
+      dirty = true;
+    }
+    (state.workAssignments || []).forEach((a) => {
+      if (a && a.scope === "xyz") {
+        a.scope = "field";
+        dirty = true;
+      }
+    });
+    if (dirty) saveState(state);
+  })();
+
   let sessionRole = null;
   /** Login username for the current session (used to record who submitted each entry). */
   let sessionUsername = null;
@@ -564,7 +573,7 @@
   let customPortalCameraTargetFieldId = null;
   let customPortalImageDataUrlByField = {};
   let customPortalImageObjectUrlByField = {};
-  let workReportEditEntryId = null;
+  let fieldEditEntryId = null;
   let surveyEditEntryId = null;
   let processEditEntryId = null;
   let reminderEditEntryId = null;
@@ -658,7 +667,6 @@
     login: $("#view-login"),
     rolePicker: $("#view-role-picker"),
     field: $("#view-field"),
-    xyz: $("#view-xyz"),
     survey: $("#view-survey"),
     process: $("#view-process"),
     customPortal: $("#view-custom-portal"),
@@ -674,7 +682,7 @@
 
   function getRolePickerOrder() {
     const mids = getCustomPortalsList().map((p) => portalRoleKey(p.id));
-    return ["field", "xyz", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", ...mids, "admin"];
+    return ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", ...mids, "admin"];
   }
 
   function getRoleLabel(role) {
@@ -990,7 +998,6 @@
     if (typeof role === "string" && role.startsWith("cp_")) return "customPortal";
     const m = {
       field: "field",
-      xyz: "xyz",
       survey: "survey",
       process: "process",
       dashboard: "dashboard",
@@ -1009,14 +1016,13 @@
     });
   }
 
-  function setWorkReportPortalSubView(role, mode) {
-    const p = workReportDomPrefix(role);
-    const formP = $("#" + p + "-panel-form");
-    const histP = $("#" + p + "-panel-history");
-    const assignP = $("#" + p + "-panel-assigned");
-    const btnV = $("#" + p + "-btn-view-history");
-    const btnA = $("#" + p + "-btn-assigned-work");
-    const btnB = $("#" + p + "-btn-back-form");
+  function setFieldPortalSubView(mode) {
+    const formP = $("#field-panel-form");
+    const histP = $("#field-panel-history");
+    const assignP = $("#field-panel-assigned");
+    const btnV = $("#field-btn-view-history");
+    const btnA = $("#field-btn-assigned-work");
+    const btnB = $("#field-btn-back-form");
     const isForm = mode === "form";
     const isHist = mode === "history";
     const isAssign = mode === "assigned";
@@ -1026,12 +1032,8 @@
     if (btnV) btnV.hidden = !isForm;
     if (btnA) btnA.hidden = !isForm;
     if (btnB) btnB.hidden = isForm;
-    if (isHist) renderWorkReportHistory(role);
-    if (isAssign) renderAssigneeWorkMount(p + "-assigned-work", role);
-  }
-
-  function setFieldPortalSubView(mode) {
-    setWorkReportPortalSubView("field", mode);
+    if (isHist) renderFieldHistory();
+    if (isAssign) renderAssigneeWorkMount("field-assigned-work", "field");
   }
 
   function setSurveyPortalSubView(mode) {
@@ -1191,12 +1193,11 @@
     stopCamera();
     stopCustomPortalCamera();
     clearFieldCameraCapture();
-    if (isWorkReportRole(role)) {
-      const p = workReportDomPrefix(role);
-      showView(p);
-      clearWorkReportEditMode(role);
-      setWorkReportPortalSubView(role, "form");
-      startTsTick("#" + p + "-timestamp");
+    if (role === "field") {
+      showView("field");
+      clearFieldEditMode();
+      setFieldPortalSubView("form");
+      startTsTick("#field-timestamp");
     } else if (role === "survey") {
       showView("survey");
       clearSurveyEditMode();
@@ -1291,9 +1292,7 @@
       /* assign work UI + mount handled in dashboard branch */
     } else if (typeof role === "string" && role.startsWith("cp_")) {
       renderAssigneeWorkMount("custom-portal-assigned-work", role);
-    } else if (isWorkReportRole(role)) {
-      renderAssigneeWorkMount(`${workReportDomPrefix(role)}-assigned-work`, role);
-    } else if (["survey", "process", "reminders", "calendar"].includes(role)) {
+    } else if (["field", "survey", "process", "reminders", "calendar"].includes(role)) {
       renderAssigneeWorkMount(`${role}-assigned-work`, role);
     }
     updateSwitchPortalButtons();
@@ -1599,22 +1598,18 @@
       cameraStream.getTracks().forEach((t) => t.stop());
       cameraStream = null;
     }
-    ["field", "xyz"].forEach((p) => {
-      const video = $("#" + p + "-camera-video");
-      if (video) video.srcObject = null;
-    });
+    const video = $("#field-camera-video");
+    if (video) video.srcObject = null;
   }
 
   function closeCameraPanel() {
-    ["field", "xyz"].forEach((p) => {
-      const panel = $("#" + p + "-camera-panel");
-      if (panel) panel.hidden = true;
-      const errEl = $("#" + p + "-camera-error");
-      if (errEl) {
-        errEl.hidden = true;
-        errEl.textContent = "";
-      }
-    });
+    const panel = $("#field-camera-panel");
+    if (panel) panel.hidden = true;
+    const errEl = $("#field-camera-error");
+    if (errEl) {
+      errEl.hidden = true;
+      errEl.textContent = "";
+    }
   }
 
   function stopCamera() {
@@ -1626,8 +1621,8 @@
     fieldCameraDataUrl = null;
   }
 
-  function showPhotoPreviewFromSrc(prefix, src) {
-    const img = $("#" + prefix + "-photo-preview");
+  function showPhotoPreviewFromSrc(src) {
+    const img = $("#field-photo-preview");
     if (!img) return;
     img.src = src;
     img.hidden = false;
@@ -1670,7 +1665,7 @@
       lt.setAttribute("aria-pressed", "false");
     }
     setError("#login-error", "");
-    workReportEditEntryId = null;
+    fieldEditEntryId = null;
     surveyEditEntryId = null;
     processEditEntryId = null;
     reminderEditEntryId = null;
@@ -1773,7 +1768,6 @@
     });
     return {
       field: filterFieldByDateRange(state.fieldEntries || [], fromStr, toStr),
-      xyz: filterFieldByDateRange(state.xyzEntries || [], fromStr, toStr),
       survey: filterSurveyByDateRange(state.surveyEntries || [], fromStr, toStr),
       process: filterProcessByDateRange(state.processEntries || [], fromStr, toStr),
       reminders: filterRemindersByDueRange(state.reminders || [], fromStr, toStr),
@@ -1956,7 +1950,6 @@
     const u = sessionUsername && String(sessionUsername).trim();
     const pairs = [
       ["field-assigned-work-badge", "field"],
-      ["xyz-assigned-work-badge", "xyz"],
       ["survey-assigned-work-badge", "survey"],
       ["process-assigned-work-badge", "process"],
       ["reminders-assigned-work-badge", "reminders"],
@@ -2062,7 +2055,6 @@
     };
     addOpt("all", "All portals");
     addOpt("field", "Work report (field)");
-    addOpt("xyz", "XYZ portal");
     addOpt("survey", "Employee survey");
     addOpt("process", "Kitchen / recipes (process)");
     addOpt("dashboard", "Dashboard");
@@ -2358,7 +2350,6 @@
 
   function refreshAllAssigneeWorkMounts() {
     renderAssigneeWorkMount("field-assigned-work", "field");
-    renderAssigneeWorkMount("xyz-assigned-work", "xyz");
     renderAssigneeWorkMount("survey-assigned-work", "survey");
     renderAssigneeWorkMount("process-assigned-work", "process");
     renderAssigneeWorkMount("reminders-assigned-work", "reminders");
@@ -2572,7 +2563,7 @@
     });
   }
 
-  function renderDashboardCharts(field, xyz, survey, process, rem, customByPortal, calTasks) {
+  function renderDashboardCharts(field, survey, process, rem, customByPortal, calTasks) {
     destroyDashboardCharts();
     const ChartCtor = typeof Chart !== "undefined" ? Chart : null;
     if (!ChartCtor) return;
@@ -2592,10 +2583,10 @@
       const el = document.getElementById("chart-portal-volume");
       if (el) {
         const portals = getCustomPortalsList();
-        const labels = ["Work report", "XYZ portal", "Survey", "Kitchen / recipes", "Reminders", "Calendar tasks"];
-        const data = [field.length, xyz.length, survey.length, proc.length, rem.length, cal.length];
-        const bg = [colors[0], "#9a7b64", colors[1], colors[2], colors[3], colors[5]];
-        let ci = 7;
+        const labels = ["Work report", "Survey", "Kitchen / recipes", "Reminders", "Calendar tasks"];
+        const data = [field.length, survey.length, proc.length, rem.length, cal.length];
+        const bg = [colors[0], colors[1], colors[2], colors[3], colors[5]];
+        let ci = 6;
         portals.forEach((p) => {
           const short = p.title.length > 18 ? p.title.slice(0, 16) + "…" : p.title;
           labels.push(short);
@@ -2648,35 +2639,6 @@
                 {
                   data: [yes, no],
                   backgroundColor: [colors[1], colors[4]],
-                  borderColor: "#ffffff",
-                  borderWidth: 2,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { ...chartCommonText(), legend: { position: "bottom" } },
-            },
-          })
-        );
-      }
-    }
-
-    if (filter === "all" || filter === "xyz") {
-      const yesX = xyz.filter((e) => e.workDone === "yes").length;
-      const noX = xyz.filter((e) => e.workDone === "no").length;
-      const elX = document.getElementById("chart-xyz-work-done");
-      if (elX) {
-        dashboardChartList.push(
-          new ChartCtor(elX, {
-            type: "doughnut",
-            data: {
-              labels: ["Work done: yes", "Work done: no"],
-              datasets: [
-                {
-                  data: [yesX, noX],
-                  backgroundColor: [colors[2], colors[4]],
                   borderColor: "#ffffff",
                   borderWidth: 2,
                 },
@@ -2867,7 +2829,7 @@
   }
 
   function renderDashboard() {
-    const { field, xyz, survey, process, reminders: rem, calendar: cal, custom } = getDashboardFilteredDatasets();
+    const { field, survey, process, reminders: rem, calendar: cal, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     const cpFilterId = parsePortalIdFromRole(dashboardFilter);
     if (cpFilterId && !getCustomPortalsList().some((p) => p.id === cpFilterId)) {
@@ -2877,15 +2839,11 @@
     syncDashboardCustomPanels(custom);
 
     $("#stat-field-count").textContent = String(field.length);
-    const statXyz = $("#stat-xyz-count");
-    if (statXyz) statXyz.textContent = String(xyz.length);
     $("#stat-survey-count").textContent = String(survey.length);
     const statProc = $("#stat-process-count");
     if (statProc) statProc.textContent = String(process.length);
     const workYes = field.filter((e) => e.workDone === "yes").length;
     $("#stat-work-yes").textContent = String(workYes);
-    const statXyzYes = $("#stat-xyz-work-yes");
-    if (statXyzYes) statXyzYes.textContent = String(xyz.filter((e) => e.workDone === "yes").length);
     $("#stat-reminders-count").textContent = String(rem.length);
     const statCal = $("#stat-calendar-count");
     if (statCal) statCal.textContent = String(cal.length);
@@ -2938,30 +2896,6 @@
         `;
         fieldBody.appendChild(tr);
       });
-
-    const xyzBody = $("#dash-xyz-body");
-    if (xyzBody) {
-      xyzBody.innerHTML = "";
-      xyz
-        .slice()
-        .reverse()
-        .slice(0, 25)
-        .forEach((e) => {
-          const tr = document.createElement("tr");
-          const thumb = e.photoDataUrl
-            ? `<img class="thumb" src="${e.photoDataUrl}" alt="" />`
-            : "—";
-          tr.innerHTML = `
-          <td><small>${escapeHtml(formatDashboardLoginId(e))}</small></td>
-          <td>${escapeHtml(e.name)}</td>
-          <td>${escapeHtml(e.phone)}</td>
-          <td>${escapeHtml(e.workDone)}</td>
-          <td>${thumb}</td>
-          <td><small>${escapeHtml(e.timestamp)}</small></td>
-        `;
-          xyzBody.appendChild(tr);
-        });
-    }
 
     const surveyBody = $("#dash-survey-body");
     surveyBody.innerHTML = "";
@@ -3036,7 +2970,7 @@
 
     setDashboardTabsUI(dashboardFilter);
     setDashboardSectionVisibility(dashboardFilter);
-    renderDashboardCharts(field, xyz, survey, process, rem, custom, cal);
+    renderDashboardCharts(field, survey, process, rem, custom, cal);
     if (isDashboardManagerRole()) {
       renderAssigneeWorkMount("dashboard-assigned-work", sessionRole, true);
     }
@@ -3048,15 +2982,10 @@
     return d.innerHTML;
   }
 
-  function getLatestWorkReportEntry(role) {
-    const key = workReportEntriesStateKey(role);
-    const list = state[key] || [];
+  function getLatestFieldEntry() {
+    const list = state.fieldEntries || [];
     if (!list.length) return null;
     return list[list.length - 1];
-  }
-
-  function getLatestFieldEntry() {
-    return getLatestWorkReportEntry("field");
   }
 
   function getLatestSurveyEntry() {
@@ -3104,78 +3033,65 @@
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  function clearWorkReportEditMode(role) {
-    const p = workReportDomPrefix(role);
-    workReportEditEntryId = null;
-    const form = $("#" + p + "-form");
+  function clearFieldEditMode() {
+    fieldEditEntryId = null;
+    const form = $("#field-form");
     if (form) form.reset();
     stopCamera();
     clearFieldCameraCapture();
     revokeFieldPhotoUrl();
-    const prev = $("#" + p + "-photo-preview");
+    const prev = $("#field-photo-preview");
     if (prev) {
       prev.hidden = true;
       prev.removeAttribute("src");
     }
-    const c = $("#" + p + "-cancel-edit");
+    const c = $("#field-cancel-edit");
     if (c) c.hidden = true;
-    const sb = $("#" + p + "-submit-btn");
+    const sb = $("#field-submit-btn");
     if (sb) sb.textContent = "Submit report";
-    renderWorkReportHistory(role);
+    renderFieldHistory();
   }
 
-  function clearFieldEditMode() {
-    clearWorkReportEditMode("field");
-  }
-
-  function beginWorkReportEditEntry(role, e) {
-    const latest = getLatestWorkReportEntry(role);
+  function beginFieldEditEntry(e) {
+    const latest = getLatestFieldEntry();
     if (!e || !latest || e.id !== latest.id) return;
-    setWorkReportPortalSubView(role, "form");
-    workReportEditEntryId = e.id;
-    const p = workReportDomPrefix(role);
-    const wn = workReportWorkDoneInputName(role);
-    $("#" + p + "-name").value = e.name || "";
-    $("#" + p + "-phone").value = e.phone || "";
-    $$(`input[name="${wn}"]`).forEach((r) => {
+    setFieldPortalSubView("form");
+    fieldEditEntryId = e.id;
+    $("#field-name").value = e.name || "";
+    $("#field-phone").value = e.phone || "";
+    $$('input[name="work_done"]').forEach((r) => {
       r.checked = r.value === e.workDone;
     });
     stopCamera();
     revokeFieldPhotoUrl();
     clearFieldCameraCapture();
-    const fp = $("#" + p + "-photo");
+    const fp = $("#field-photo");
     if (fp) fp.value = "";
     fieldCameraDataUrl = e.photoDataUrl || null;
-    const prevImg = $("#" + p + "-photo-preview");
+    const prevImg = $("#field-photo-preview");
     if (e.photoDataUrl) {
-      showPhotoPreviewFromSrc(p, e.photoDataUrl);
+      showPhotoPreviewFromSrc(e.photoDataUrl);
     } else if (prevImg) {
       prevImg.hidden = true;
       prevImg.removeAttribute("src");
     }
-    const c = $("#" + p + "-cancel-edit");
+    const c = $("#field-cancel-edit");
     if (c) c.hidden = false;
-    const sb = $("#" + p + "-submit-btn");
+    const sb = $("#field-submit-btn");
     if (sb) sb.textContent = "Save changes";
-    renderWorkReportHistory(role);
+    renderFieldHistory();
   }
 
-  function beginFieldEditEntry(e) {
-    beginWorkReportEditEntry("field", e);
-  }
-
-  function renderWorkReportHistory(role) {
-    const p = workReportDomPrefix(role);
-    const wrap = $("#" + p + "-history-list");
+  function renderFieldHistory() {
+    const wrap = $("#field-history-list");
     if (!wrap) return;
-    const key = workReportEntriesStateKey(role);
-    const list = (state[key] || []).slice().reverse();
+    const list = (state.fieldEntries || []).slice().reverse();
     wrap.innerHTML = "";
     if (list.length === 0) {
       wrap.innerHTML = '<p class="muted" style="margin:0">No reports yet.</p>';
       return;
     }
-    const latest = getLatestWorkReportEntry(role);
+    const latest = getLatestFieldEntry();
     list.forEach((e) => {
       const isLatest = latest && e.id === latest.id;
       const row = document.createElement("div");
@@ -3204,8 +3120,7 @@
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "btn ghost portal-history-edit";
-        btn.dataset.workReportEntryId = e.id;
-        btn.dataset.workReportRole = role;
+        btn.dataset.fieldEntryId = e.id;
         btn.textContent = "Edit";
         row.appendChild(btn);
       } else {
@@ -3216,10 +3131,6 @@
       }
       wrap.appendChild(row);
     });
-  }
-
-  function renderFieldHistory() {
-    renderWorkReportHistory("field");
   }
 
   function clearSurveyEditMode() {
@@ -4587,28 +4498,6 @@
     });
   }
 
-  function attachWorkReportViewHandlers(viewEl, role) {
-    const p = workReportDomPrefix(role);
-    if (!viewEl) return;
-    viewEl.addEventListener("click", (ev) => {
-      if (ev.target.closest("#" + p + "-cancel-edit")) {
-        clearWorkReportEditMode(role);
-        return;
-      }
-      const ed = ev.target.closest(".portal-history-edit");
-      const hlist = $("#" + p + "-history-list");
-      if (ed && hlist && hlist.contains(ed)) {
-        const id = ed.getAttribute("data-work-report-entry-id");
-        const wrRole = ed.getAttribute("data-work-report-role") || role;
-        const key = workReportEntriesStateKey(wrRole);
-        const e = (state[key] || []).find((x) => x.id === id);
-        if (e) beginWorkReportEditEntry(wrRole, e);
-      }
-    });
-  }
-  attachWorkReportViewHandlers($("#view-field"), "field");
-  attachWorkReportViewHandlers($("#view-xyz"), "xyz");
-
   const fieldBtnHist = $("#field-btn-view-history");
   if (fieldBtnHist) fieldBtnHist.addEventListener("click", () => setFieldPortalSubView("history"));
   const fieldBtnBack = $("#field-btn-back-form");
@@ -4616,12 +4505,21 @@
   const fieldBtnAssigned = $("#field-btn-assigned-work");
   if (fieldBtnAssigned) fieldBtnAssigned.addEventListener("click", () => setFieldPortalSubView("assigned"));
 
-  const xyzBtnHist = $("#xyz-btn-view-history");
-  if (xyzBtnHist) xyzBtnHist.addEventListener("click", () => setWorkReportPortalSubView("xyz", "history"));
-  const xyzBtnBack = $("#xyz-btn-back-form");
-  if (xyzBtnBack) xyzBtnBack.addEventListener("click", () => setWorkReportPortalSubView("xyz", "form"));
-  const xyzBtnAssigned = $("#xyz-btn-assigned-work");
-  if (xyzBtnAssigned) xyzBtnAssigned.addEventListener("click", () => setWorkReportPortalSubView("xyz", "assigned"));
+  const viewField = $("#view-field");
+  if (viewField) {
+    viewField.addEventListener("click", (ev) => {
+      if (ev.target.closest("#field-cancel-edit")) {
+        clearFieldEditMode();
+        return;
+      }
+      const ed = ev.target.closest(".portal-history-edit");
+      if (ed && $("#field-history-list") && $("#field-history-list").contains(ed)) {
+        const id = ed.getAttribute("data-field-entry-id");
+        const e = (state.fieldEntries || []).find((x) => x.id === id);
+        if (e) beginFieldEditEntry(e);
+      }
+    });
+  }
 
   const surveyBtnHist = $("#survey-btn-view-history");
   if (surveyBtnHist) surveyBtnHist.addEventListener("click", () => setSurveyPortalSubView("history"));
@@ -4747,185 +4645,154 @@
     });
   }
 
-  function bindWorkReportPhotoListeners(role) {
-    const p = workReportDomPrefix(role);
-    const photoIn = $("#" + p + "-photo");
-    if (!photoIn) return;
-    photoIn.addEventListener("change", (ev) => {
-      const file = ev.target.files && ev.target.files[0];
-      const img = $("#" + p + "-photo-preview");
-      if (!img) return;
-      stopCamera();
-      clearFieldCameraCapture();
-      revokeFieldPhotoUrl();
-      if (!file) {
-        img.hidden = true;
-        img.removeAttribute("src");
-        return;
-      }
-      fieldPhotoObjectUrl = URL.createObjectURL(file);
-      img.src = fieldPhotoObjectUrl;
-      img.hidden = false;
-    });
-  }
-
-  function bindWorkReportCameraListeners(role) {
-    const p = workReportDomPrefix(role);
-    const openBtn = $("#" + p + "-camera-open");
-    const capBtn = $("#" + p + "-camera-capture");
-    const cancelBtn = $("#" + p + "-camera-cancel");
-    if (openBtn) {
-      openBtn.addEventListener("click", async () => {
-        const panel = $("#" + p + "-camera-panel");
-        const errEl = $("#" + p + "-camera-error");
-        if (!panel || !errEl) return;
-        errEl.hidden = true;
-        errEl.textContent = "";
-        stopCamera();
-        clearFieldCameraCapture();
-        revokeFieldPhotoUrl();
-        const ph = $("#" + p + "-photo");
-        if (ph) ph.value = "";
-        const prev = $("#" + p + "-photo-preview");
-        if (prev) {
-          prev.hidden = true;
-          prev.removeAttribute("src");
-        }
-
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-          errEl.textContent =
-            "Camera is not available in this browser. Use “Choose from gallery” or open this page over HTTPS or localhost.";
-          panel.hidden = false;
-          errEl.hidden = false;
-          return;
-        }
-
-        try {
-          try {
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: { facingMode: { ideal: "environment" } },
-              audio: false,
-            });
-          } catch {
-            cameraStream = await navigator.mediaDevices.getUserMedia({
-              video: true,
-              audio: false,
-            });
-          }
-          const video = $("#" + p + "-camera-video");
-          video.srcObject = cameraStream;
-          panel.hidden = false;
-          await video.play().catch(() => {});
-        } catch (e) {
-          releaseCamera();
-          errEl.textContent =
-            "Could not open the camera. Allow permission when prompted, or use gallery upload.";
-          errEl.hidden = false;
-          panel.hidden = false;
-        }
-      });
+  $("#field-photo").addEventListener("change", (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    const img = $("#field-photo-preview");
+    stopCamera();
+    clearFieldCameraCapture();
+    revokeFieldPhotoUrl();
+    if (!file) {
+      img.hidden = true;
+      img.removeAttribute("src");
+      return;
     }
-    if (capBtn) {
-      capBtn.addEventListener("click", () => {
-        const video = $("#" + p + "-camera-video");
-        if (!cameraStream || !video.videoWidth) {
-          alert("Wait for the camera preview to appear, then capture.");
-          return;
-        }
-        const canvas = $("#" + p + "-camera-canvas");
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(video, 0, 0, w, h);
-        fieldCameraDataUrl = canvas.toDataURL("image/jpeg", 0.88);
-        releaseCamera();
-        closeCameraPanel();
-        showPhotoPreviewFromSrc(p, fieldCameraDataUrl);
-      });
+    fieldPhotoObjectUrl = URL.createObjectURL(file);
+    img.src = fieldPhotoObjectUrl;
+    img.hidden = false;
+  });
+
+  $("#field-camera-open").addEventListener("click", async () => {
+    const panel = $("#field-camera-panel");
+    const errEl = $("#field-camera-error");
+    errEl.hidden = true;
+    errEl.textContent = "";
+    stopCamera();
+    clearFieldCameraCapture();
+    revokeFieldPhotoUrl();
+    $("#field-photo").value = "";
+    $("#field-photo-preview").hidden = true;
+    $("#field-photo-preview").removeAttribute("src");
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      errEl.textContent =
+        "Camera is not available in this browser. Use “Choose from gallery” or open this page over HTTPS or localhost.";
+      panel.hidden = false;
+      errEl.hidden = false;
+      return;
     }
-    if (cancelBtn) cancelBtn.addEventListener("click", () => stopCamera());
-  }
 
-  function bindWorkReportFormSubmit(role) {
-    const p = workReportDomPrefix(role);
-    const form = $("#" + p + "-form");
-    if (!form) return;
-    const wn = workReportWorkDoneInputName(role);
-    form.addEventListener("submit", async (ev) => {
-      ev.preventDefault();
-      if (sessionRole !== role) return;
-      const name = $("#" + p + "-name").value.trim();
-      const phone = $("#" + p + "-phone").value.trim();
-      const workDone = form.querySelector(`input[name="${wn}"]:checked`)?.value || "";
-      const file = $("#" + p + "-photo").files[0];
-
-      if (!name || !phone || !workDone) {
-        alert("Please fill name, phone, and work done.");
-        return;
-      }
-      if (!fieldCameraDataUrl && !file) {
-        alert("Please take a photo with the camera or choose one from the gallery.");
-        return;
-      }
-
-      let photoDataUrl;
-      if (fieldCameraDataUrl) {
-        photoDataUrl = fieldCameraDataUrl;
-      } else {
-        try {
-          photoDataUrl = await readPhotoAsDataUrl(file);
-        } catch {
-          alert("Could not read the photo. Try a smaller image.");
-          return;
-        }
-      }
-
-      const timestamp = formatNow();
-      const submittedAt = new Date().toISOString();
-      const key = workReportEntriesStateKey(role);
-      if (!Array.isArray(state[key])) state[key] = [];
-      const latest = getLatestWorkReportEntry(role);
-      const editingLatest =
-        workReportEditEntryId && latest && workReportEditEntryId === latest.id;
-      const by = entrySubmittedBy();
-      if (editingLatest) {
-        Object.assign(latest, {
-          name,
-          phone,
-          workDone,
-          photoDataUrl,
-          timestamp,
-          submittedAt,
-          submittedBy: by,
+    try {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false,
         });
-      } else {
-        state[key].push({
-          id: entryId(),
-          name,
-          phone,
-          workDone,
-          photoDataUrl,
-          timestamp,
-          submittedAt,
-          submittedBy: by,
+      } catch {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: false,
         });
       }
-      saveState(state);
+      const video = $("#field-camera-video");
+      video.srcObject = cameraStream;
+      panel.hidden = false;
+      await video.play().catch(() => {});
+    } catch (e) {
+      releaseCamera();
+      errEl.textContent =
+        "Could not open the camera. Allow permission when prompted, or use gallery upload.";
+      errEl.hidden = false;
+      panel.hidden = false;
+    }
+  });
 
-      alert(editingLatest ? "Changes saved." : "Entry saved with timestamp:\n" + timestamp);
-      clearWorkReportEditMode(role);
-      renderDashboard();
-    });
-  }
+  $("#field-camera-capture").addEventListener("click", () => {
+    const video = $("#field-camera-video");
+    if (!cameraStream || !video.videoWidth) {
+      alert("Wait for the camera preview to appear, then capture.");
+      return;
+    }
+    const canvas = $("#field-camera-canvas");
+    const w = video.videoWidth;
+    const h = video.videoHeight;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0, w, h);
+    fieldCameraDataUrl = canvas.toDataURL("image/jpeg", 0.88);
+    releaseCamera();
+    closeCameraPanel();
+    showPhotoPreviewFromSrc(fieldCameraDataUrl);
+  });
 
-  bindWorkReportPhotoListeners("field");
-  bindWorkReportCameraListeners("field");
-  bindWorkReportFormSubmit("field");
-  bindWorkReportPhotoListeners("xyz");
-  bindWorkReportCameraListeners("xyz");
-  bindWorkReportFormSubmit("xyz");
+  $("#field-camera-cancel").addEventListener("click", () => {
+    stopCamera();
+  });
+
+  $("#field-form").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    if (sessionRole !== "field") return;
+    const name = $("#field-name").value.trim();
+    const phone = $("#field-phone").value.trim();
+    const workDone = $('input[name="work_done"]:checked')?.value || "";
+    const file = $("#field-photo").files[0];
+
+    if (!name || !phone || !workDone) {
+      alert("Please fill name, phone, and work done.");
+      return;
+    }
+    if (!fieldCameraDataUrl && !file) {
+      alert("Please take a photo with the camera or choose one from the gallery.");
+      return;
+    }
+
+    let photoDataUrl;
+    if (fieldCameraDataUrl) {
+      photoDataUrl = fieldCameraDataUrl;
+    } else {
+      try {
+        photoDataUrl = await readPhotoAsDataUrl(file);
+      } catch {
+        alert("Could not read the photo. Try a smaller image.");
+        return;
+      }
+    }
+
+    const timestamp = formatNow();
+    const submittedAt = new Date().toISOString();
+    if (!Array.isArray(state.fieldEntries)) state.fieldEntries = [];
+    const latest = getLatestFieldEntry();
+    const editingLatest =
+      fieldEditEntryId && latest && fieldEditEntryId === latest.id;
+    const by = entrySubmittedBy();
+    if (editingLatest) {
+      Object.assign(latest, {
+        name,
+        phone,
+        workDone,
+        photoDataUrl,
+        timestamp,
+        submittedAt,
+        submittedBy: by,
+      });
+    } else {
+      state.fieldEntries.push({
+        id: entryId(),
+        name,
+        phone,
+        workDone,
+        photoDataUrl,
+        timestamp,
+        submittedAt,
+        submittedBy: by,
+      });
+    }
+    saveState(state);
+
+    alert(editingLatest ? "Changes saved." : "Entry saved with timestamp:\n" + timestamp);
+    clearFieldEditMode();
+    renderDashboard();
+  });
 
   $("#reminder-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
@@ -5546,7 +5413,7 @@
       if (!btn || !dashTabs.contains(btn)) return;
       const f = btn.getAttribute("data-dash-tab");
       if (
-        !["all", "field", "xyz", "survey", "process", "reminders", "calendar"].includes(f) &&
+        !["all", "field", "survey", "process", "reminders", "calendar"].includes(f) &&
         !(f && f.startsWith("cp_"))
       ) {
         return;
@@ -5555,7 +5422,7 @@
       setDashboardTabsUI(f);
       setDashboardSectionVisibility(f);
       const ds = getDashboardFilteredDatasets();
-      renderDashboardCharts(ds.field, ds.xyz, ds.survey, ds.process, ds.reminders, ds.custom, ds.calendar);
+      renderDashboardCharts(ds.field, ds.survey, ds.process, ds.reminders, ds.custom, ds.calendar);
     });
   }
 

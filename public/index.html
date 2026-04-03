@@ -34,8 +34,8 @@
         <button type="submit" class="btn primary">Sign in</button>
       </form>
       <p class="hint" style="margin-top: 1.25rem">
-        Example accounts (Admin can add more per section and create custom portals): <strong>worker</strong> / worker123 ·
-        <strong>xyz</strong> / xyz123 ·
+        Example accounts (Admin can add more per section and create custom portals): <strong>worker</strong> / worker123 or
+        <strong>xyz</strong> / xyz123 (both open the same work report portal) ·
         <strong>survey</strong> / survey123 · <strong>process</strong> / process123 (kitchen / recipes) ·
         <strong>manager</strong> / manager123 · <strong>supervisor</strong> / supervisor123 ·
         <strong>remind</strong> / remind123 · <strong>admin</strong> / admin123. Custom portals use logins you define in Admin.
@@ -94,8 +94,8 @@
             <fieldset class="field" style="border: none; margin: 0; padding: 0">
               <legend class="field-label">Work done</legend>
               <div class="radio-row">
-                <label><input type="radio" name="field_work_done" value="yes" required /> Yes</label>
-                <label><input type="radio" name="field_work_done" value="no" /> No</label>
+                <label><input type="radio" name="work_done" value="yes" required /> Yes</label>
+                <label><input type="radio" name="work_done" value="no" /> No</label>
               </div>
             </fieldset>
             <div class="field">
@@ -135,92 +135,6 @@
         </div>
         <div id="field-panel-assigned" hidden>
           <div id="field-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
-        </div>
-      </main>
-    </div>
-
-    <!-- XYZ portal (same form as field / worker) -->
-    <div id="view-xyz" hidden>
-      <header class="header">
-        <div>
-          <h1 class="logo">XYZ portal</h1>
-          <span class="role-badge">XYZ login</span>
-        </div>
-        <div class="header-actions">
-          <button type="button" class="btn ghost" id="xyz-btn-back-form" hidden>Back to form</button>
-          <button type="button" class="btn ghost btn-with-badge" id="xyz-btn-assigned-work">
-            Assigned work
-            <span id="xyz-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
-          </button>
-          <button type="button" class="btn ghost" id="xyz-btn-view-history">View history</button>
-          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
-          <button type="button" class="btn ghost" data-logout>Log out</button>
-        </div>
-      </header>
-      <main>
-        <div id="xyz-panel-form">
-        <div class="card">
-          <h2>Report form</h2>
-          <p class="muted">
-            Same workflow as the work report portal: submit details and a photo. Timestamp updates every second until you submit.
-          </p>
-          <div class="field timestamp-box" aria-live="polite">
-            <span class="field-label">Current timestamp</span>
-            <strong id="xyz-timestamp">—</strong>
-          </div>
-          <form id="xyz-form" class="form" style="margin-top: 1rem" novalidate>
-            <label class="field">
-              <span class="field-label">Name</span>
-              <input type="text" id="xyz-name" name="name" required autocomplete="name" />
-            </label>
-            <label class="field">
-              <span class="field-label">Phone number</span>
-              <input type="tel" id="xyz-phone" name="phone" required autocomplete="tel" />
-            </label>
-            <fieldset class="field" style="border: none; margin: 0; padding: 0">
-              <legend class="field-label">Work done</legend>
-              <div class="radio-row">
-                <label><input type="radio" name="xyz_work_done" value="yes" required /> Yes</label>
-                <label><input type="radio" name="xyz_work_done" value="no" /> No</label>
-              </div>
-            </fieldset>
-            <div class="field">
-              <span class="field-label">Photo of work done</span>
-              <p class="hint" style="margin: 0 0 0.5rem">Use the camera on your device, or pick an image from your gallery.</p>
-              <div class="photo-source-row">
-                <button type="button" class="btn primary" id="xyz-camera-open">Take photo with camera</button>
-                <label class="btn file-pick-label">
-                  Choose from gallery
-                  <input type="file" id="xyz-photo" name="photo" accept="image/*" class="visually-hidden-file" />
-                </label>
-              </div>
-              <div id="xyz-camera-panel" class="camera-panel" hidden>
-                <video id="xyz-camera-video" class="camera-video" playsinline muted autoplay></video>
-                <div class="camera-actions">
-                  <button type="button" class="btn primary" id="xyz-camera-capture">Capture photo</button>
-                  <button type="button" class="btn ghost" id="xyz-camera-cancel">Cancel</button>
-                </div>
-                <p id="xyz-camera-error" class="error-banner" style="margin-top: 0.75rem; margin-bottom: 0" hidden></p>
-              </div>
-              <canvas id="xyz-camera-canvas" class="camera-canvas" aria-hidden="true"></canvas>
-              <img id="xyz-photo-preview" class="photo-preview" alt="Photo preview" hidden />
-            </div>
-            <div class="portal-form-actions">
-              <button type="submit" class="btn primary" id="xyz-submit-btn">Submit report</button>
-              <button type="button" class="btn ghost" id="xyz-cancel-edit" hidden>Cancel edit</button>
-            </div>
-          </form>
-        </div>
-        </div>
-        <div id="xyz-panel-history" hidden>
-        <div class="card">
-          <h2>History</h2>
-          <p class="muted">Newest first. Only your latest report can be edited; older rows are read only.</p>
-          <div id="xyz-history-list" class="portal-history-list"></div>
-        </div>
-        </div>
-        <div id="xyz-panel-assigned" hidden>
-          <div id="xyz-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
         </div>
       </main>
     </div>
@@ -704,9 +618,6 @@
           <button type="button" class="nav-btn" role="tab" data-dash-tab="field" aria-selected="false">
             Work report
           </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="xyz" aria-selected="false">
-            XYZ portal
-          </button>
           <button type="button" class="nav-btn" role="tab" data-dash-tab="survey" aria-selected="false">
             Survey
           </button>
@@ -738,14 +649,6 @@
             <div id="stat-work-yes" class="stat-value">0</div>
             <div class="stat-label">Reports: work done = yes</div>
           </div>
-          <div class="stat" data-dash-for="xyz">
-            <div id="stat-xyz-count" class="stat-value">0</div>
-            <div class="stat-label">XYZ reports</div>
-          </div>
-          <div class="stat" data-dash-for="xyz">
-            <div id="stat-xyz-work-yes" class="stat-value">0</div>
-            <div class="stat-label">XYZ: work done = yes</div>
-          </div>
           <div class="stat" data-dash-for="reminders">
             <div id="stat-reminders-count" class="stat-value">0</div>
             <div class="stat-label">Reminders set</div>
@@ -769,13 +672,6 @@
             <p class="muted" style="margin-top: 0">Yes vs no from field reports</p>
             <div class="dash-chart-canvas-wrap">
               <canvas id="chart-work-done" aria-label="Chart of work done yes versus no"></canvas>
-            </div>
-          </div>
-          <div class="card dash-chart-card" data-dash-for="xyz">
-            <h3>XYZ — work done</h3>
-            <p class="muted" style="margin-top: 0">Yes vs no from XYZ portal reports</p>
-            <div class="dash-chart-canvas-wrap">
-              <canvas id="chart-xyz-work-done" aria-label="Chart of XYZ work done yes versus no"></canvas>
             </div>
           </div>
           <div class="card dash-chart-card" data-dash-for="survey">
@@ -826,25 +722,6 @@
                 </tr>
               </thead>
               <tbody id="dash-field-body"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card dash-table-card" style="margin-bottom: 1.25rem" data-dash-for="xyz">
-          <h2>Recent XYZ reports</h2>
-          <p class="muted">Latest 25 entries from the XYZ portal login.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Login ID</th>
-                  <th>Name</th>
-                  <th>Phone</th>
-                  <th>Work done</th>
-                  <th>Photo</th>
-                  <th>Timestamp</th>
-                </tr>
-              </thead>
-              <tbody id="dash-xyz-body"></tbody>
             </table>
           </div>
         </div>
@@ -1088,9 +965,6 @@
             <button type="button" class="nav-btn admin-cred-tab is-active" role="tab" data-admin-cred-tab="field" aria-selected="true">
               Field
             </button>
-            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="xyz" aria-selected="false">
-              XYZ
-            </button>
             <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="survey" aria-selected="false">
               Survey
             </button>
@@ -1114,19 +988,12 @@
             <div class="admin-cred-panel" data-admin-cred-panel="field">
               <div class="admin-block">
                 <h3>Field / work report</h3>
+                <p class="muted" style="margin-top: 0">
+                  All logins here share the same work report portal and history (including the example
+                  <strong>xyz</strong> / <strong>xyz123</strong> account).
+                </p>
                 <div id="admin-accounts-field" class="admin-accounts" data-role="field"></div>
                 <button type="button" class="btn ghost admin-add-cred" data-add-cred="field">Add login</button>
-              </div>
-            </div>
-            <div class="admin-cred-panel" data-admin-cred-panel="xyz" hidden>
-              <div class="admin-block">
-                <h3>XYZ portal</h3>
-                <p class="muted" style="margin-top: 0">
-                  Same report form as Field; submissions are stored separately and appear on the dashboard under
-                  <strong>XYZ portal</strong>.
-                </p>
-                <div id="admin-accounts-xyz" class="admin-accounts" data-role="xyz"></div>
-                <button type="button" class="btn ghost admin-add-cred" data-add-cred="xyz">Add login</button>
               </div>
             </div>
             <div class="admin-cred-panel" data-admin-cred-panel="survey" hidden>
