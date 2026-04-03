@@ -5,12 +5,19 @@
   "description": "Multi-role portal — static UI served by Express for Render",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "cap:sync": "npx cap sync android",
+    "cap:open": "npx cap open android"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
     "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0"
   }
 }

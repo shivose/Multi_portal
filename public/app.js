@@ -5,6 +5,17 @@
   /** Survives refresh in the same tab; cleared on Log out (not tab close). */
   const SESSION_AUTH_KEY = "multiLoginPortal_session_v1";
 
+  function getApiBase() {
+    if (typeof window === "undefined" || !window.PORTAL_API_BASE) return "";
+    return String(window.PORTAL_API_BASE).replace(/\/$/, "");
+  }
+
+  function apiUrl(path) {
+    const p = path.startsWith("/") ? path : "/" + path;
+    const b = getApiBase();
+    return b ? b + p : p;
+  }
+
   const ROLE_KEYS = ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"];
 
   const ROLE_LABELS = {
@@ -286,11 +297,9 @@
     return !!(a.completedAt || a.acknowledgedAt);
   }
 
-  function loadState() {
+  function normalizeParsedState(parsed) {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return defaultState();
-      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return defaultState();
       const base = defaultState();
       const pc = parsed.credentials || {};
       const adminRaw = pc.admin;
@@ -364,8 +373,106 @@
     }
   }
 
-  function saveState(state) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      return normalizeParsedState(JSON.parse(raw));
+    } catch {
+      return defaultState();
+    }
+  }
+
+  let serverRevision = 0;
+  let apiSyncEnabled = true;
+  let serverSyncReady = false;
+  let serverPushTimer = null;
+  let lastServerPullHadDocument = false;
+
+  function persistStateLocal(st) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(st));
+    } catch (e) {
+      console.warn("localStorage save failed", e);
+    }
+  }
+
+  function scheduleServerPush() {
+    if (!apiSyncEnabled || !serverSyncReady) return;
+    if (serverPushTimer != null) clearTimeout(serverPushTimer);
+    serverPushTimer = setTimeout(() => {
+      serverPushTimer = null;
+      flushServerPushNow();
+    }, 600);
+  }
+
+  function saveState(st) {
+    persistStateLocal(st);
+    if (serverSyncReady) scheduleServerPush();
+  }
+
+  async function flushServerPushNow() {
+    if (!apiSyncEnabled) return;
+    try {
+      const res = await fetch(apiUrl("/api/state"), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ revision: serverRevision, state }),
+      });
+      if (res.status === 409) {
+        window.location.reload();
+        return;
+      }
+      if (!res.ok) return;
+      const j = await res.json();
+      if (j && j.revision != null) serverRevision = Number(j.revision) || serverRevision;
+    } catch (e) {
+      console.warn("Server sync push failed", e);
+    }
+  }
+
+  async function pullServerOnBoot() {
+    try {
+      const res = await fetch(apiUrl("/api/state"), { headers: { Accept: "application/json" } });
+      if (!res.ok) {
+        apiSyncEnabled = false;
+        return;
+      }
+      const j = await res.json();
+      serverRevision = Number(j.revision) || 0;
+      lastServerPullHadDocument = j.state != null && typeof j.state === "object";
+      if (lastServerPullHadDocument) {
+        state = normalizeParsedState(j.state);
+        persistStateLocal(state);
+      }
+    } catch (e) {
+      console.warn("Central sync unavailable (offline or static hosting):", e);
+      apiSyncEnabled = false;
+    }
+  }
+
+  async function pollServerForNewerRevision() {
+    if (!apiSyncEnabled || !serverSyncReady || document.visibilityState !== "visible") return;
+    try {
+      const res = await fetch(apiUrl("/api/state"), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      const rev = Number(j.revision) || 0;
+      if (rev <= serverRevision) return;
+      serverRevision = rev;
+      if (j.state != null && typeof j.state === "object") {
+        state = normalizeParsedState(j.state);
+        persistStateLocal(state);
+        snapshotStateStorageRaw();
+        if (sessionRole) enterPortal(sessionRole);
+      }
+    } catch (e) {
+      /* ignore */
+    }
   }
 
   /**
@@ -436,131 +543,133 @@
 
   let state = loadState();
 
-  (function migrateDashboardEntryTimes() {
-    let dirty = false;
-    ["fieldEntries", "surveyEntries", "processEntries"].forEach((key) => {
-      const arr = state[key];
-      if (!Array.isArray(arr)) return;
-      arr.forEach((entry) => {
-        if (entry.submittedAt) return;
-        const t = parseTimestampString(entry.timestamp);
-        if (t && !Number.isNaN(t.getTime())) {
-          entry.submittedAt = t.toISOString();
-          dirty = true;
-        }
-      });
-    });
-    if (dirty) saveState(state);
-  })();
-
-  (function migrateCustomPortalSubmittedAt() {
-    let dirty = false;
-    const ce = state.customPortalEntries;
-    if (!ce || typeof ce !== "object") return;
-    Object.keys(ce).forEach((pid) => {
-      const list = ce[pid];
-      if (!Array.isArray(list)) return;
-      list.forEach((entry) => {
-        if (entry.submittedAt) return;
-        const t = parseTimestampString(entry.timestamp);
-        if (t && !Number.isNaN(t.getTime())) {
-          entry.submittedAt = t.toISOString();
-          dirty = true;
-        }
-      });
-    });
-    if (dirty) saveState(state);
-  })();
-
-  (function migrateEntryIdsAndReminderCreatedAt() {
-    let dirty = false;
-    (state.fieldEntries || []).forEach((e) => {
-      if (!e.id) {
-        e.id = entryId();
-        dirty = true;
-      }
-    });
-    (state.surveyEntries || []).forEach((e) => {
-      if (!e.id) {
-        e.id = entryId();
-        dirty = true;
-      }
-    });
-    (state.processEntries || []).forEach((e) => {
-      if (!e.id) {
-        e.id = entryId();
-        dirty = true;
-      }
-    });
-    const ce = state.customPortalEntries;
-    if (ce && typeof ce === "object") {
-      Object.keys(ce).forEach((pid) => {
-        (ce[pid] || []).forEach((e) => {
-          if (!e.id) {
-            e.id = entryId();
+  function runAllDataMigrations() {
+    (function migrateDashboardEntryTimes() {
+      let dirty = false;
+      ["fieldEntries", "surveyEntries", "processEntries"].forEach((key) => {
+        const arr = state[key];
+        if (!Array.isArray(arr)) return;
+        arr.forEach((entry) => {
+          if (entry.submittedAt) return;
+          const t = parseTimestampString(entry.timestamp);
+          if (t && !Number.isNaN(t.getTime())) {
+            entry.submittedAt = t.toISOString();
             dirty = true;
           }
         });
       });
-    }
-    (state.reminders || []).forEach((r) => {
-      if (!r.createdAt) {
-        r.createdAt = r.due || new Date().toISOString();
-        dirty = true;
-      }
-    });
-    if (dirty) saveState(state);
-  })();
+      if (dirty) saveState(state);
+    })();
 
-  (function ensureCoreRoleCredentialsPresent() {
-    const base = defaultState().credentials;
-    let dirty = false;
-    for (const role of ROLE_KEYS) {
-      const raw = state.credentials[role];
-      const hasValid = normalizeRoleCredentialList(raw, []).length > 0;
-      if (!hasValid) {
-        const filled = normalizeRoleCredentialList(raw, base[role]);
-        if (filled.length > 0) {
-          state.credentials[role] = filled.map((x) => ({ username: x.username, password: x.password }));
+    (function migrateCustomPortalSubmittedAt() {
+      let dirty = false;
+      const ce = state.customPortalEntries;
+      if (!ce || typeof ce !== "object") return;
+      Object.keys(ce).forEach((pid) => {
+        const list = ce[pid];
+        if (!Array.isArray(list)) return;
+        list.forEach((entry) => {
+          if (entry.submittedAt) return;
+          const t = parseTimestampString(entry.timestamp);
+          if (t && !Number.isNaN(t.getTime())) {
+            entry.submittedAt = t.toISOString();
+            dirty = true;
+          }
+        });
+      });
+      if (dirty) saveState(state);
+    })();
+
+    (function migrateEntryIdsAndReminderCreatedAt() {
+      let dirty = false;
+      (state.fieldEntries || []).forEach((e) => {
+        if (!e.id) {
+          e.id = entryId();
           dirty = true;
         }
-      }
-    }
-    if (dirty) saveState(state);
-  })();
-
-  (function mergeLegacyXyzIntoFieldPortal() {
-    let dirty = false;
-    const cred = state.credentials || {};
-    if (cred.xyz != null) {
-      const fieldArr = normalizeRoleCredentialList(cred.field, defaultState().credentials.field);
-      const xyzArr = normalizeRoleCredentialList(cred.xyz, []);
-      const seen = new Set(fieldArr.map((c) => (c.username || "").trim().toLowerCase()).filter(Boolean));
-      xyzArr.forEach((c) => {
-        const k = (c.username || "").trim().toLowerCase();
-        if (k && !seen.has(k)) {
-          fieldArr.push({ username: c.username.trim(), password: c.password });
-          seen.add(k);
+      });
+      (state.surveyEntries || []).forEach((e) => {
+        if (!e.id) {
+          e.id = entryId();
+          dirty = true;
         }
       });
-      state.credentials.field = fieldArr;
-      delete state.credentials.xyz;
-      dirty = true;
-    }
-    if (Array.isArray(state.xyzEntries) && state.xyzEntries.length > 0) {
-      if (!Array.isArray(state.fieldEntries)) state.fieldEntries = [];
-      state.fieldEntries = state.fieldEntries.concat(state.xyzEntries);
-      delete state.xyzEntries;
-      dirty = true;
-    }
-    (state.workAssignments || []).forEach((a) => {
-      if (a && a.scope === "xyz") {
-        a.scope = "field";
+      (state.processEntries || []).forEach((e) => {
+        if (!e.id) {
+          e.id = entryId();
+          dirty = true;
+        }
+      });
+      const ce = state.customPortalEntries;
+      if (ce && typeof ce === "object") {
+        Object.keys(ce).forEach((pid) => {
+          (ce[pid] || []).forEach((e) => {
+            if (!e.id) {
+              e.id = entryId();
+              dirty = true;
+            }
+          });
+        });
+      }
+      (state.reminders || []).forEach((r) => {
+        if (!r.createdAt) {
+          r.createdAt = r.due || new Date().toISOString();
+          dirty = true;
+        }
+      });
+      if (dirty) saveState(state);
+    })();
+
+    (function ensureCoreRoleCredentialsPresent() {
+      const base = defaultState().credentials;
+      let dirty = false;
+      for (const role of ROLE_KEYS) {
+        const raw = state.credentials[role];
+        const hasValid = normalizeRoleCredentialList(raw, []).length > 0;
+        if (!hasValid) {
+          const filled = normalizeRoleCredentialList(raw, base[role]);
+          if (filled.length > 0) {
+            state.credentials[role] = filled.map((x) => ({ username: x.username, password: x.password }));
+            dirty = true;
+          }
+        }
+      }
+      if (dirty) saveState(state);
+    })();
+
+    (function mergeLegacyXyzIntoFieldPortal() {
+      let dirty = false;
+      const cred = state.credentials || {};
+      if (cred.xyz != null) {
+        const fieldArr = normalizeRoleCredentialList(cred.field, defaultState().credentials.field);
+        const xyzArr = normalizeRoleCredentialList(cred.xyz, []);
+        const seen = new Set(fieldArr.map((c) => (c.username || "").trim().toLowerCase()).filter(Boolean));
+        xyzArr.forEach((c) => {
+          const k = (c.username || "").trim().toLowerCase();
+          if (k && !seen.has(k)) {
+            fieldArr.push({ username: c.username.trim(), password: c.password });
+            seen.add(k);
+          }
+        });
+        state.credentials.field = fieldArr;
+        delete state.credentials.xyz;
         dirty = true;
       }
-    });
-    if (dirty) saveState(state);
-  })();
+      if (Array.isArray(state.xyzEntries) && state.xyzEntries.length > 0) {
+        if (!Array.isArray(state.fieldEntries)) state.fieldEntries = [];
+        state.fieldEntries = state.fieldEntries.concat(state.xyzEntries);
+        delete state.xyzEntries;
+        dirty = true;
+      }
+      (state.workAssignments || []).forEach((a) => {
+        if (a && a.scope === "xyz") {
+          a.scope = "field";
+          dirty = true;
+        }
+      });
+      if (dirty) saveState(state);
+    })();
+  }
 
   let sessionRole = null;
   /** Login username for the current session (used to record who submitted each entry). */
@@ -649,6 +758,7 @@
     setInterval(() => {
       if (document.visibilityState !== "visible") return;
       externalStateRefreshAssignedWorkOnly();
+      pollServerForNewerRevision();
     }, 20000);
   }
 
@@ -5563,9 +5673,18 @@
     });
   }
 
-  if (!tryRestoreSessionAuth()) {
-    showView("login");
-  }
-  initExternalStateSync();
-  updateSwitchPortalButtons();
+  (async function boot() {
+    await pullServerOnBoot();
+    runAllDataMigrations();
+    if (apiSyncEnabled && !lastServerPullHadDocument) {
+      await flushServerPushNow();
+    }
+    serverSyncReady = true;
+    scheduleServerPush();
+    if (!tryRestoreSessionAuth()) {
+      showView("login");
+    }
+    initExternalStateSync();
+    updateSwitchPortalButtons();
+  })();
 })();
