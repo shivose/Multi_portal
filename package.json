@@ -1,0 +1,16 @@
+{
+  "name": "multi-login-portal",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Multi-role portal — static UI served by Express for Render",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
