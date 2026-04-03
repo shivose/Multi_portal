@@ -75,6 +75,17 @@ The `android/` project wraps the same web app. Generated APKs are **not** commit
 
 **Requirements:** Android Studio, Android SDK, and JDK as required by current Capacitor/Android Gradle. Run `npm run cap:sync` after changing files in `public/` before each release build.
 
+### Download a pre-built debug APK (GitHub)
+
+If you do not have Android Studio locally, use the automated build:
+
+1. Open the repository’s **Actions** tab on GitHub.
+2. Select the **Build debug APK** workflow and open the latest successful run.
+3. Under **Artifacts**, download **`multi-login-portal-debug-apk`** (ZIP contains `app-debug.apk`).
+4. On your phone, allow install from unknown sources if prompted, then open the APK (e.g. from Files or the Downloads app).
+
+**Note:** The default Capacitor config loads the bundled `public/` UI. Set `PORTAL_API_BASE` in `public/index.html` to your live server URL (see README above) and push, or add a `server.url` in `capacitor.config.json`, then wait for a new Actions build so the app can reach your backend.
+
 ## Deploy (e.g. Render)
 
 - **Start command:** `npm start`  
