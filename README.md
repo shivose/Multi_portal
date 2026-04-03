@@ -11,6 +11,22 @@ npm start
 
 Open [http://localhost:3000](http://localhost:3000) (or the port shown in the terminal).
 
+## Progressive Web App (PWA)
+
+The site is installable as a PWA:
+
+- **`public/manifest.webmanifest`** — name, theme, icons, `standalone` display.
+- **`public/sw.js`** — service worker that precaches the app shell (`index.html`, `styles.css`, `app.js`, manifest, icons). **`/api/*` is never cached** so data sync always hits the network when online.
+- **Offline:** you can open the last cached shell without a network; Chart.js / EmailJS load from CDN and need connectivity. **`PORTAL_API_BASE`** must point at your API if the HTML is not served from the same origin.
+
+**Install on a phone**
+
+1. Deploy (or use local network access) with **HTTPS** in production; for local testing, Chrome desktop can still register the service worker on `http://localhost`.
+2. Open the site in **Chrome** (Android) or **Safari** (iOS 16.4+ supports Web Push install flow for PWAs in many regions) / **Chrome** on iOS has limited install support.
+3. Use the browser menu: **Install app** / **Add to Home screen**.
+
+After UI updates, bump the `CACHE` constant in `sw.js` so clients fetch fresh shell files.
+
 ## Centralized data
 
 - **API**
