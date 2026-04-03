@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-role portal</title>
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <div class="app">
+    <!-- Login -->
+    <section id="view-login" class="login-card card" aria-labelledby="login-heading">
+      <h1 class="logo" id="login-heading">Multi-role portal</h1>
+      <div id="login-error" class="error-banner" hidden></div>
+      <form id="login-form" class="form" novalidate>
+        <div class="field">
+          <span class="field-label">Username</span>
+          <div class="password-with-toggle">
+            <input type="text" id="login-username" name="username" required autocomplete="username" />
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Password</span>
+          <div class="password-with-toggle">
+            <input type="password" id="login-password" name="password" required autocomplete="current-password" />
+            <button type="button" class="btn ghost btn-toggle-pass" id="login-toggle-pass" aria-pressed="false">
+              Show
+            </button>
+          </div>
+        </div>
+        <button type="submit" class="btn primary">Sign in</button>
+      </form>
+      <p class="hint" style="margin-top: 1.25rem">
+        Example accounts (Admin can add more per section and create custom portals): <strong>worker</strong> / worker123 ·
+        <strong>survey</strong> / survey123 · <strong>process</strong> / process123 (kitchen / recipes) ·
+        <strong>manager</strong> / manager123 · <strong>supervisor</strong> / supervisor123 ·
+        <strong>remind</strong> / remind123 · <strong>admin</strong> / admin123. Custom portals use logins you define in Admin.
+        The <strong>manager</strong> and <strong>supervisor</strong> logins share the same dashboard view: <strong>Assigned work</strong> (delegate tasks) and <strong>Dashboard</strong> (reports and charts). Other portals use an <strong>Assigned work</strong> button when you have tasks.
+      </p>
+    </section>
+
+    <!-- Multiple portals matched: choose one -->
+    <section id="view-role-picker" class="login-card card" hidden aria-labelledby="role-picker-heading">
+      <h1 class="logo" id="role-picker-heading">Choose portal</h1>
+      <p class="muted" id="role-picker-intro">
+        This username and password are set up for more than one area. Select where you want to go.
+      </p>
+      <div id="role-picker-buttons" class="role-picker-actions" role="group" aria-label="Portals"></div>
+      <button type="button" class="btn ghost role-picker-back" id="role-picker-back">Back to sign in</button>
+    </section>
+
+    <!-- Role 1: Field work -->
+    <div id="view-field" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Work report</h1>
+          <span class="role-badge">Field login</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="field-btn-back-form" hidden>Back to form</button>
+          <button type="button" class="btn ghost btn-with-badge" id="field-btn-assigned-work">
+            Assigned work
+            <span id="field-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" id="field-btn-view-history">View history</button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="field-panel-form">
+        <div class="card">
+          <h2>Report form</h2>
+          <p class="muted">
+            Submit details and a photo. Timestamp updates every second until you submit. Use <strong>Assigned work</strong> or <strong>View history</strong> in the header; only the latest report can be edited.
+          </p>
+          <div class="field timestamp-box" aria-live="polite">
+            <span class="field-label">Current timestamp</span>
+            <strong id="field-timestamp">—</strong>
+          </div>
+          <form id="field-form" class="form" style="margin-top: 1rem" novalidate>
+            <label class="field">
+              <span class="field-label">Name</span>
+              <input type="text" id="field-name" name="name" required autocomplete="name" />
+            </label>
+            <label class="field">
+              <span class="field-label">Phone number</span>
+              <input type="tel" id="field-phone" name="phone" required autocomplete="tel" />
+            </label>
+            <fieldset class="field" style="border: none; margin: 0; padding: 0">
+              <legend class="field-label">Work done</legend>
+              <div class="radio-row">
+                <label><input type="radio" name="work_done" value="yes" required /> Yes</label>
+                <label><input type="radio" name="work_done" value="no" /> No</label>
+              </div>
+            </fieldset>
+            <div class="field">
+              <span class="field-label">Photo of work done</span>
+              <p class="hint" style="margin: 0 0 0.5rem">Use the camera on your device, or pick an image from your gallery.</p>
+              <div class="photo-source-row">
+                <button type="button" class="btn primary" id="field-camera-open">Take photo with camera</button>
+                <label class="btn file-pick-label">
+                  Choose from gallery
+                  <input type="file" id="field-photo" name="photo" accept="image/*" class="visually-hidden-file" />
+                </label>
+              </div>
+              <div id="field-camera-panel" class="camera-panel" hidden>
+                <video id="field-camera-video" class="camera-video" playsinline muted autoplay></video>
+                <div class="camera-actions">
+                  <button type="button" class="btn primary" id="field-camera-capture">Capture photo</button>
+                  <button type="button" class="btn ghost" id="field-camera-cancel">Cancel</button>
+                </div>
+                <p id="field-camera-error" class="error-banner" style="margin-top: 0.75rem; margin-bottom: 0" hidden></p>
+              </div>
+              <canvas id="field-camera-canvas" class="camera-canvas" aria-hidden="true"></canvas>
+              <img id="field-photo-preview" class="photo-preview" alt="Photo preview" hidden />
+            </div>
+            <div class="portal-form-actions">
+              <button type="submit" class="btn primary" id="field-submit-btn">Submit report</button>
+              <button type="button" class="btn ghost" id="field-cancel-edit" hidden>Cancel edit</button>
+            </div>
+          </form>
+        </div>
+        </div>
+        <div id="field-panel-history" hidden>
+        <div class="card">
+          <h2>History</h2>
+          <p class="muted">Newest first. Only your latest report can be edited; older rows are read only.</p>
+          <div id="field-history-list" class="portal-history-list"></div>
+        </div>
+        </div>
+        <div id="field-panel-assigned" hidden>
+          <div id="field-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Role 2: Survey -->
+    <div id="view-survey" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Employee survey</h1>
+          <span class="role-badge">Survey login</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="survey-btn-back-form" hidden>Back to form</button>
+          <button type="button" class="btn ghost btn-with-badge" id="survey-btn-assigned-work">
+            Assigned work
+            <span id="survey-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" id="survey-btn-view-history">View history</button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="survey-panel-form">
+        <div class="card">
+          <h2>Questionnaire</h2>
+          <p class="muted">
+            Timestamp is shown live and stored when you submit. Use <strong>View history</strong> for past responses; only the latest can be edited.
+          </p>
+          <div class="field timestamp-box" aria-live="polite">
+            <span class="field-label">Current timestamp</span>
+            <strong id="survey-timestamp">—</strong>
+          </div>
+          <form id="survey-form" class="form" style="margin-top: 1rem" novalidate>
+            <label class="field">
+              <span class="field-label">Number of employees</span>
+              <input type="number" id="survey-employees" name="employees" min="0" step="1" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Age</span>
+              <input type="number" id="survey-age" name="age" min="0" max="120" step="1" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Sex</span>
+              <select id="survey-sex" name="sex" required>
+                <option value="">Select</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="non_binary">Non-binary</option>
+                <option value="prefer_not">Prefer not to say</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <div class="portal-form-actions">
+              <button type="submit" class="btn primary" id="survey-submit-btn">Submit</button>
+              <button type="button" class="btn ghost" id="survey-cancel-edit" hidden>Cancel edit</button>
+            </div>
+          </form>
+        </div>
+        </div>
+        <div id="survey-panel-history" hidden>
+        <div class="card">
+          <h2>History</h2>
+          <p class="muted">Newest first. Only your latest response can be edited.</p>
+          <div id="survey-history-list" class="portal-history-list"></div>
+        </div>
+        </div>
+        <div id="survey-panel-assigned" hidden>
+          <div id="survey-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Role: Kitchen / process (restaurant recipes & costing) -->
+    <div id="view-process" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Kitchen &amp; recipes</h1>
+          <span class="role-badge">Process login</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="process-btn-back-form" hidden>Back to form</button>
+          <button type="button" class="btn ghost btn-with-badge" id="process-btn-assigned-work">
+            Assigned work
+            <span id="process-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" id="process-btn-view-history">View history</button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="process-panel-form">
+          <div class="card">
+            <h2>Recipe cost &amp; preparation</h2>
+            <p class="muted">
+              Add raw materials line by line (ingredient → quantity → unit, then <strong>+ Add next ingredient</strong>).
+              Below, <strong>Dishes &amp; ingredients (saved)</strong> lists each dish’s latest ingredient list for future
+              master pricing. Timestamp is saved when you submit. Use <strong>View history</strong> for past recipes; only
+              the latest entry can be edited.
+            </p>
+            <div class="field timestamp-box" aria-live="polite">
+              <span class="field-label">Current timestamp</span>
+              <strong id="process-timestamp">—</strong>
+            </div>
+            <form id="process-form" class="form" style="margin-top: 1rem" novalidate>
+              <label class="field">
+                <span class="field-label">Recipe / dish name</span>
+                <input type="text" id="process-recipe-name" name="recipeName" maxlength="200" required autocomplete="off" />
+              </label>
+              <label class="field">
+                <span class="field-label">Menu category</span>
+                <select id="process-dish-category" name="dishCategory" required>
+                  <option value="">Select</option>
+                  <option value="appetizer">Appetizer</option>
+                  <option value="main">Main course</option>
+                  <option value="side">Side</option>
+                  <option value="dessert">Dessert</option>
+                  <option value="beverage">Beverage</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label class="field">
+                <span class="field-label">Portions (yield)</span>
+                <input type="number" id="process-portions" name="portions" min="1" step="1" value="1" required />
+              </label>
+              <div class="field process-ingredients-block">
+                <span class="field-label">Raw materials (one row per ingredient)</span>
+                <p class="hint" style="margin: 0 0 0.5rem">
+                  Add each ingredient, its quantity, and unit. Use <strong>+ Add next ingredient</strong> for the next
+                  line. Names are stored so you can later attach a master price list and auto-calculate dish cost.
+                </p>
+                <div id="process-ingredients-rows" class="process-ingredients-rows" aria-live="polite"></div>
+                <button type="button" class="btn ghost process-add-ingredient-btn" id="process-add-ingredient">
+                  + Add next ingredient
+                </button>
+              </div>
+              <label class="field">
+                <span class="field-label">Total ingredient cost ($)</span>
+                <input type="number" id="process-ingredient-cost" name="ingredientCost" min="0" step="0.01" required />
+                <span class="hint" style="display: block; margin-top: 0.35rem">
+                  Enter today’s total for this recipe. Later, this can be filled automatically from ingredient master
+                  prices × quantities above.
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">Other direct costs ($)</span>
+                <input
+                  type="number"
+                  id="process-other-cost"
+                  name="otherCost"
+                  min="0"
+                  step="0.01"
+                  value="0"
+                  aria-describedby="process-other-hint"
+                />
+                <span id="process-other-hint" class="hint" style="display: block; margin-top: 0.35rem">
+                  Packaging, delivery allocation, smallwares — optional.
+                </span>
+              </label>
+              <label class="field">
+                <span class="field-label">Prep / cooking labor (minutes)</span>
+                <input type="number" id="process-labor-minutes" name="laborMinutes" min="0" step="1" value="0" />
+              </label>
+              <label class="field">
+                <span class="field-label">Labor rate ($ / hour)</span>
+                <input type="number" id="process-labor-rate" name="laborRate" min="0" step="0.01" value="0" />
+              </label>
+              <label class="field">
+                <span class="field-label">Preparation steps</span>
+                <textarea
+                  id="process-prep-steps"
+                  name="prepSteps"
+                  rows="5"
+                  maxlength="6000"
+                  placeholder="Mise en place, cooking steps, holding, plating…"
+                ></textarea>
+              </label>
+              <label class="field">
+                <span class="field-label">Allergens &amp; food safety notes</span>
+                <textarea
+                  id="process-allergens"
+                  name="allergens"
+                  rows="3"
+                  maxlength="2000"
+                  placeholder="e.g. Contains dairy, gluten; cook to 74°C internal…"
+                ></textarea>
+              </label>
+              <div class="portal-form-actions">
+                <button type="submit" class="btn primary" id="process-submit-btn">Save recipe</button>
+                <button type="button" class="btn ghost" id="process-cancel-edit" hidden>Cancel edit</button>
+              </div>
+            </form>
+          </div>
+          <div class="card process-dish-library-card">
+            <h2>Dishes &amp; ingredients (saved)</h2>
+            <p class="muted" style="margin-top: 0">
+              Latest saved version for each dish name (all users on this device). Ingredient lines are kept in
+              structured form for future costing imports.
+            </p>
+            <div id="process-dish-library-mount" class="process-dish-library-mount"></div>
+          </div>
+        </div>
+        <div id="process-panel-history" hidden>
+          <div class="card">
+            <h2>History</h2>
+            <p class="muted">Newest first. Only your latest recipe sheet can be edited.</p>
+            <div id="process-history-list" class="portal-history-list"></div>
+          </div>
+        </div>
+        <div id="process-panel-assigned" hidden>
+          <div id="process-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Admin-defined custom portal (dynamic form) -->
+    <div id="view-custom-portal" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo" id="custom-portal-title">Custom portal</h1>
+          <span class="role-badge">Custom form</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="custom-portal-btn-back-form" hidden>Back to form</button>
+          <button type="button" class="btn ghost btn-with-badge" id="custom-portal-btn-assigned-work">
+            Assigned work
+            <span id="custom-portal-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" id="custom-portal-btn-view-history">View history</button>
+          <button type="button" class="btn ghost" id="custom-portal-btn-reminders" hidden>Reminders</button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="custom-portal-panel-form">
+        <div class="card">
+          <h2>Your response</h2>
+          <div class="field timestamp-box" aria-live="polite">
+            <span class="field-label">Current timestamp</span>
+            <strong id="custom-portal-timestamp">—</strong>
+          </div>
+          <form id="custom-portal-form" class="form" style="margin-top: 1rem" novalidate hidden>
+            <div id="custom-portal-fields"></div>
+            <div id="custom-portal-camera-panel" class="camera-panel" hidden>
+              <video id="custom-portal-camera-video" class="camera-video" playsinline muted autoplay></video>
+              <div class="camera-actions">
+                <button type="button" class="btn primary" id="custom-portal-camera-capture">Capture photo</button>
+                <button type="button" class="btn ghost" id="custom-portal-camera-cancel">Cancel</button>
+              </div>
+              <p id="custom-portal-camera-error" class="error-banner" style="margin-top: 0.75rem; margin-bottom: 0" hidden></p>
+            </div>
+            <canvas id="custom-portal-camera-canvas" class="camera-canvas" aria-hidden="true"></canvas>
+            <div class="portal-form-actions">
+              <button type="submit" class="btn primary" id="custom-portal-submit-btn">Submit</button>
+              <button type="button" class="btn ghost" id="custom-portal-cancel-edit" hidden>Cancel edit</button>
+            </div>
+          </form>
+        </div>
+        </div>
+        <div id="custom-portal-panel-reminders" hidden>
+        <div class="card">
+          <h2>Reminders</h2>
+          <div id="custom-portal-reminders-body" class="custom-portal-reminders-body"></div>
+        </div>
+        </div>
+        <div id="custom-portal-panel-history" hidden>
+        <div class="card">
+          <h2>History</h2>
+          <p class="muted">Newest first. Only your latest submission can be edited.</p>
+          <div id="custom-portal-history-list" class="portal-history-list"></div>
+        </div>
+        </div>
+        <div id="custom-portal-panel-assigned" hidden>
+          <div id="custom-portal-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Role 3: Dashboard -->
+    <div id="view-dashboard" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Dashboard</h1>
+          <span id="dashboard-role-badge" class="role-badge">Manager</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div
+          class="dash-manager-section-tabs"
+          id="dashboard-manager-section-tabs"
+          role="tablist"
+          aria-label="Assigned work or dashboard analytics"
+        >
+          <button
+            type="button"
+            class="nav-btn btn-with-badge"
+            role="tab"
+            id="dashboard-tab-assign"
+            data-dash-section="assign"
+            aria-selected="false"
+          >
+            Assigned work
+            <span id="dashboard-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button
+            type="button"
+            class="nav-btn is-active"
+            role="tab"
+            id="dashboard-tab-analytics"
+            data-dash-section="analytics"
+            aria-selected="true"
+          >
+            Dashboard
+          </button>
+        </div>
+
+        <div id="dashboard-section-assign" hidden>
+        <div id="dash-manager-assign-work" class="card assigned-work-manager-card" hidden>
+          <h2>Assign work</h2>
+          <p class="muted" style="margin-top: 0">
+            Send instructions to any non-admin login (matched by <strong>username</strong>). Choose which portal they should see the task in, or
+            <strong>All portals</strong> so it appears everywhere they sign in.
+          </p>
+          <div class="assign-work-form-grid">
+            <label class="field">
+              <span class="field-label">Assign to username</span>
+              <select id="assign-work-target-user" aria-label="User to assign work to"></select>
+            </label>
+            <label class="field">
+              <span class="field-label">Show in portal</span>
+              <select id="assign-work-scope" aria-label="Portal where assignee sees this task"></select>
+            </label>
+            <label class="field assign-work-instructions-field">
+              <span class="field-label">What they should do</span>
+              <textarea
+                id="assign-work-instructions"
+                rows="4"
+                maxlength="4000"
+                placeholder="Describe the work, deadline expectations, links, etc."
+                autocomplete="off"
+              ></textarea>
+            </label>
+            <label class="field assign-work-deadline-field">
+              <span class="field-label">Deadline (optional)</span>
+              <select id="assign-work-deadline" aria-label="When this task is due">
+                <option value="">No deadline</option>
+                <option value="2h">In 2 hours</option>
+                <option value="4h">In 4 hours</option>
+                <option value="today">Today</option>
+                <option value="1d">In a day</option>
+                <option value="1w">In a week</option>
+              </select>
+              <span class="hint" style="display: block; margin-top: 0.35rem">
+                Calculated when you click Assign work (this device’s clock). <strong>Today</strong> means due by the end of today in your local time.
+              </span>
+            </label>
+          </div>
+          <button type="button" class="btn primary" id="assign-work-submit">Assign work</button>
+          <div class="assign-work-list-section">
+            <h3 class="assign-work-subheading">All assignments</h3>
+            <p class="muted" style="margin-top: 0">
+              Use Active or Completed to filter the list, then search by any word in the details below. Remove a row to
+              clear it from every portal.
+            </p>
+            <div
+              id="assign-work-manager-filter"
+              class="assign-work-manager-filter"
+              role="tablist"
+              aria-label="Assignments by status"
+            >
+              <button
+                type="button"
+                class="nav-btn is-active"
+                role="tab"
+                aria-selected="true"
+                data-assign-manager-filter="active"
+              >
+                Active assignments
+              </button>
+              <button
+                type="button"
+                class="nav-btn"
+                role="tab"
+                aria-selected="false"
+                data-assign-manager-filter="completed"
+              >
+                Completed assignments
+              </button>
+            </div>
+            <label class="field assign-work-manager-search-field">
+              <span class="field-label">Search assignments</span>
+              <input
+                type="search"
+                id="assign-work-manager-search"
+                autocomplete="off"
+                placeholder="Type any word — user, task text, portal, who assigned, date…"
+                aria-label="Search assignments by any detail"
+              />
+            </label>
+            <div id="dash-assignments-list" class="assigned-work-manager-list"></div>
+          </div>
+        </div>
+        <div class="card assigned-work-manager-assignee-card">
+          <h2>Tasks assigned to you</h2>
+          <p class="muted" style="margin-top: 0">
+            Work directed at your login for the <strong>Dashboard</strong> or <strong>Supervisor</strong> portal, or <strong>All portals</strong>.
+          </p>
+          <div id="dashboard-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+        </div>
+
+        <div id="dashboard-section-analytics">
+        <div class="card dash-date-range-card">
+          <h2 class="dash-date-range-title">Date range</h2>
+          <div class="dash-date-range-row">
+            <label class="field dash-date-field">
+              <span class="field-label">From (dd/mm/yyyy)</span>
+              <div class="dash-date-combo">
+                <input
+                  type="text"
+                  id="dash-date-from"
+                  class="dash-date-text"
+                  inputmode="numeric"
+                  placeholder="dd/mm/yyyy"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="dash-date-cal-slot" title="Open calendar">
+                  <span class="dash-date-cal-icon" aria-hidden="true">📅</span>
+                  <input
+                    type="date"
+                    id="dash-date-from-picker"
+                    class="dash-date-native-picker"
+                    aria-label="Pick from date in calendar"
+                  />
+                </div>
+              </div>
+            </label>
+            <label class="field dash-date-field">
+              <span class="field-label">To (dd/mm/yyyy)</span>
+              <div class="dash-date-combo">
+                <input
+                  type="text"
+                  id="dash-date-to"
+                  class="dash-date-text"
+                  inputmode="numeric"
+                  placeholder="dd/mm/yyyy"
+                  autocomplete="off"
+                  spellcheck="false"
+                />
+                <div class="dash-date-cal-slot" title="Open calendar">
+                  <span class="dash-date-cal-icon" aria-hidden="true">📅</span>
+                  <input
+                    type="date"
+                    id="dash-date-to-picker"
+                    class="dash-date-native-picker"
+                    aria-label="Pick to date in calendar"
+                  />
+                </div>
+              </div>
+            </label>
+            <div class="dash-date-range-actions">
+              <button type="button" class="btn primary" id="dash-date-apply">Apply range</button>
+              <button type="button" class="btn ghost" id="dash-date-clear">Clear range</button>
+            </div>
+          </div>
+          <p id="dash-date-active-hint" class="hint dash-date-active-hint" hidden></p>
+        </div>
+
+        <p class="muted dash-portal-hint">Choose which portal’s data to focus on, or view everything at once.</p>
+        <div class="dash-portal-tabs" id="dashboard-portal-tabs" role="tablist" aria-label="Dashboard data source">
+          <button type="button" class="nav-btn is-active" role="tab" data-dash-tab="all" aria-selected="true">
+            All portals
+          </button>
+          <button type="button" class="nav-btn" role="tab" data-dash-tab="field" aria-selected="false">
+            Work report
+          </button>
+          <button type="button" class="nav-btn" role="tab" data-dash-tab="survey" aria-selected="false">
+            Survey
+          </button>
+          <button type="button" class="nav-btn" role="tab" data-dash-tab="process" aria-selected="false">
+            Kitchen / recipes
+          </button>
+          <button type="button" class="nav-btn" role="tab" data-dash-tab="reminders" aria-selected="false">
+            Reminders
+          </button>
+          <button type="button" class="nav-btn" role="tab" data-dash-tab="calendar" aria-selected="false">
+            Calendar tasks
+          </button>
+        </div>
+
+        <div class="dash-grid" id="dash-stats-grid">
+          <div class="stat" data-dash-for="field">
+            <div id="stat-field-count" class="stat-value">0</div>
+            <div class="stat-label">Work reports</div>
+          </div>
+          <div class="stat" data-dash-for="survey">
+            <div id="stat-survey-count" class="stat-value">0</div>
+            <div class="stat-label">Survey responses</div>
+          </div>
+          <div class="stat" data-dash-for="process">
+            <div id="stat-process-count" class="stat-value">0</div>
+            <div class="stat-label">Recipe sheets</div>
+          </div>
+          <div class="stat" data-dash-for="field">
+            <div id="stat-work-yes" class="stat-value">0</div>
+            <div class="stat-label">Reports: work done = yes</div>
+          </div>
+          <div class="stat" data-dash-for="reminders">
+            <div id="stat-reminders-count" class="stat-value">0</div>
+            <div class="stat-label">Reminders set</div>
+          </div>
+          <div class="stat" data-dash-for="calendar">
+            <div id="stat-calendar-count" class="stat-value">0</div>
+            <div class="stat-label">Calendar tasks</div>
+          </div>
+        </div>
+
+        <div class="dash-charts-grid" id="dash-charts-grid">
+          <div class="card dash-chart-card" data-dash-for="all">
+            <h3>Records by portal</h3>
+            <p class="muted" style="margin-top: 0">Total entries stored per area</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-portal-volume" aria-label="Bar chart of counts by portal"></canvas>
+            </div>
+          </div>
+          <div class="card dash-chart-card" data-dash-for="field">
+            <h3>Work done</h3>
+            <p class="muted" style="margin-top: 0">Yes vs no from field reports</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-work-done" aria-label="Chart of work done yes versus no"></canvas>
+            </div>
+          </div>
+          <div class="card dash-chart-card" data-dash-for="survey">
+            <h3>Responses by sex</h3>
+            <p class="muted" style="margin-top: 0">Survey submissions</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-survey-sex" aria-label="Chart of survey counts by sex"></canvas>
+            </div>
+          </div>
+          <div class="card dash-chart-card" data-dash-for="process">
+            <h3>Recipes by category</h3>
+            <p class="muted" style="margin-top: 0">Kitchen / process login (in date range)</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-process-category" aria-label="Chart of recipe counts by menu category"></canvas>
+            </div>
+          </div>
+          <div class="card dash-chart-card" data-dash-for="reminders">
+            <h3>Reminder status</h3>
+            <p class="muted" style="margin-top: 0">Scheduled, due soon, or past due</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-reminder-status" aria-label="Chart of reminder statuses"></canvas>
+            </div>
+          </div>
+          <div class="card dash-chart-card" data-dash-for="calendar">
+            <h3>Calendar tasks</h3>
+            <p class="muted" style="margin-top: 0">Done vs open (in date range)</p>
+            <div class="dash-chart-canvas-wrap">
+              <canvas id="chart-calendar-done" aria-label="Chart of calendar tasks done versus open"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <div id="dash-custom-panels"></div>
+
+        <div class="card dash-table-card" style="margin-bottom: 1.25rem" data-dash-for="field">
+          <h2>Recent work reports</h2>
+          <p class="muted">Latest 25 entries from the field login.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Login ID</th>
+                  <th>Name</th>
+                  <th>Phone</th>
+                  <th>Work done</th>
+                  <th>Photo</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="dash-field-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card dash-table-card" style="margin-bottom: 1.25rem" data-dash-for="survey">
+          <h2>Recent surveys</h2>
+          <p class="muted">Latest 25 entries from the survey login.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Login ID</th>
+                  <th>Employees</th>
+                  <th>Age</th>
+                  <th>Sex</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="dash-survey-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card dash-table-card" style="margin-bottom: 1.25rem" data-dash-for="process">
+          <h2>Recent recipe costing</h2>
+          <p class="muted">Latest 25 entries from the kitchen / process login.</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Login ID</th>
+                  <th>Recipe</th>
+                  <th>Category</th>
+                  <th>Portions</th>
+                  <th>Total $</th>
+                  <th>$/portion</th>
+                  <th>Timestamp</th>
+                </tr>
+              </thead>
+              <tbody id="dash-process-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card dash-table-card" data-dash-for="reminders">
+          <h2>Upcoming reminders</h2>
+          <p class="muted">Next 20 by date (from reminders login). “Emailed” appears after a notification was sent (requires EmailJS setup in Admin).</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Login ID</th>
+                  <th>Title</th>
+                  <th>When</th>
+                  <th>Status</th>
+                  <th>Emailed</th>
+                  <th>Notes</th>
+                </tr>
+              </thead>
+              <tbody id="dash-reminders-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card dash-table-card" data-dash-for="calendar">
+          <h2>Calendar tasks</h2>
+          <p class="muted">Tasks by day from the Calendar login (in date range, up to 40 rows).</p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Login ID</th>
+                  <th>Task</th>
+                  <th>Done</th>
+                </tr>
+              </thead>
+              <tbody id="dash-calendar-body"></tbody>
+            </table>
+          </div>
+        </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Reminders login -->
+    <div id="view-reminders" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Reminders</h1>
+          <span class="role-badge">Reminders login</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="reminders-btn-back-form" hidden>Back to form</button>
+          <button type="button" class="btn ghost btn-with-badge" id="reminders-btn-assigned-work">
+            Assigned work
+            <span id="reminders-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" id="reminders-btn-view-history">View history</button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="reminders-panel-form">
+        <div class="card" style="margin-bottom: 1.25rem">
+          <h2>Add or edit reminder</h2>
+          <p class="muted">
+            Set a title, when it should trigger, and optional notes. Stored on this device. When the time is reached, an email is sent if Admin has configured
+            <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer">EmailJS</a>
+            — keep this site open in a tab while logged in so the check can run. Use <strong>View history</strong> to see all reminders; only the one you added most recently can be edited.
+          </p>
+          <form id="reminder-form" class="form" style="margin-top: 1rem" novalidate>
+            <label class="field">
+              <span class="field-label">Title</span>
+              <input type="text" id="reminder-title" name="title" required maxlength="200" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">Date &amp; time</span>
+              <input type="datetime-local" id="reminder-due" name="due" required />
+            </label>
+            <label class="field">
+              <span class="field-label">Notes (optional)</span>
+              <textarea id="reminder-notes" name="notes" rows="3" maxlength="2000" placeholder="Details, location, etc."></textarea>
+            </label>
+            <div class="portal-form-actions">
+              <button type="submit" class="btn primary" id="reminder-submit-btn">Save reminder</button>
+              <button type="button" class="btn ghost" id="reminder-cancel-edit" hidden>Cancel edit</button>
+            </div>
+          </form>
+        </div>
+        </div>
+        <div id="reminders-panel-history" hidden>
+        <div class="card">
+          <h2>History</h2>
+          <p class="muted">Sorted by due date. Older reminders are read only. Remove items when done.</p>
+          <div id="reminders-list" class="reminder-list" style="margin-top: 1rem"></div>
+        </div>
+        </div>
+        <div id="reminders-panel-assigned" hidden>
+          <div id="reminders-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Calendar login: month grid + daily tasks -->
+    <div id="view-calendar" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Calendar</h1>
+          <span class="role-badge">Tasks by day</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" id="calendar-btn-back-main" hidden>Back to calendar</button>
+          <button type="button" class="btn ghost btn-with-badge" id="calendar-btn-assigned-work">
+            Assigned work
+            <span id="calendar-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
+          </button>
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main>
+        <div id="calendar-panel-assigned" hidden>
+          <div id="calendar-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
+        </div>
+        <div id="calendar-panel-main">
+        <div class="card calendar-month-card">
+          <div class="calendar-toolbar">
+            <button type="button" class="btn ghost" id="calendar-prev-month" aria-label="Previous month">←</button>
+            <h2 class="calendar-month-title" id="calendar-month-label">—</h2>
+            <button type="button" class="btn ghost" id="calendar-next-month" aria-label="Next month">→</button>
+          </div>
+          <div class="calendar-weekdays" aria-hidden="true">
+            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+          </div>
+          <div id="calendar-grid" class="calendar-grid" role="grid" aria-label="Month calendar"></div>
+        </div>
+        <div class="card" style="margin-top: 1.25rem">
+          <h2 id="calendar-day-heading">Tasks</h2>
+          <div id="calendar-task-list" class="calendar-task-list"></div>
+          <div class="calendar-add-row">
+            <label class="field" style="margin: 0; flex: 1; min-width: 200px">
+              <span class="field-label">New task for the selected day</span>
+              <input type="text" id="calendar-new-task" maxlength="200" autocomplete="off" placeholder="e.g. Submit report" />
+            </label>
+            <button type="button" class="btn primary" id="calendar-add-task-btn">Add task</button>
+          </div>
+        </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Role 4: Admin -->
+    <div id="view-admin" hidden>
+      <header class="header">
+        <div>
+          <h1 class="logo">Administration</h1>
+          <span class="role-badge">Admin</span>
+        </div>
+        <div class="header-actions">
+          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
+          <button type="button" class="btn ghost" data-logout>Log out</button>
+        </div>
+      </header>
+      <main class="admin-main">
+        <div
+          class="admin-cred-tabs admin-section-tabs"
+          id="admin-section-tabs"
+          role="tablist"
+          aria-label="Admin sections"
+        >
+          <button
+            type="button"
+            class="nav-btn admin-section-tab is-active"
+            role="tab"
+            data-admin-section="credentials"
+            aria-selected="true"
+          >
+            User logins
+          </button>
+          <button
+            type="button"
+            class="nav-btn admin-section-tab"
+            role="tab"
+            data-admin-section="custom"
+            aria-selected="false"
+          >
+            Custom portals
+          </button>
+        </div>
+
+        <div id="admin-section-credentials" class="admin-section-panel">
+        <div class="card">
+          <h2>Credentials for other logins</h2>
+          <p class="muted">
+            Add one or more usernames per section. Each section needs at least one login. Within a section, usernames
+            must be unique. The <strong>same</strong> username and password may be reused in different sections; after
+            sign-in, the user picks which portal to open and can use <strong>Switch portal</strong> in the header to
+            change later without signing out. The admin account is separate (change it in code or clear site data to
+            reset).
+          </p>
+          <div id="admin-msg" class="success-banner" hidden></div>
+          <div class="admin-cred-tabs" id="admin-cred-tabs" role="tablist" aria-label="Choose portal to edit logins">
+            <button type="button" class="nav-btn admin-cred-tab is-active" role="tab" data-admin-cred-tab="field" aria-selected="true">
+              Field
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="survey" aria-selected="false">
+              Survey
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="process" aria-selected="false">
+              Kitchen / process
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="dashboard" aria-selected="false">
+              Dashboard
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="supervisor" aria-selected="false">
+              Supervisor
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="reminders" aria-selected="false">
+              Reminders
+            </button>
+            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="calendar" aria-selected="false">
+              Calendar
+            </button>
+          </div>
+          <form id="admin-credentials-form" class="admin-cred-panels-wrap" style="margin-top: 1rem" novalidate>
+            <div class="admin-cred-panel" data-admin-cred-panel="field">
+              <div class="admin-block">
+                <h3>Field / work report</h3>
+                <div id="admin-accounts-field" class="admin-accounts" data-role="field"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="field">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="survey" hidden>
+              <div class="admin-block">
+                <h3>Employee survey</h3>
+                <div id="admin-accounts-survey" class="admin-accounts" data-role="survey"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="survey">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="process" hidden>
+              <div class="admin-block">
+                <h3>Kitchen / recipes (process)</h3>
+                <p class="muted" style="margin-top: 0">
+                  Restaurant recipe costing, ingredients, labor, and prep notes. Shown on the dashboard under
+                  <strong>Kitchen / recipes</strong>.
+                </p>
+                <div id="admin-accounts-process" class="admin-accounts" data-role="process"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="process">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="dashboard" hidden>
+              <div class="admin-block">
+                <h3>Dashboard</h3>
+                <div id="admin-accounts-dashboard" class="admin-accounts" data-role="dashboard"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="dashboard">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="supervisor" hidden>
+              <div class="admin-block">
+                <h3>Supervisor</h3>
+                <p class="muted" style="margin-top: 0">
+                  Same reports, charts, and assign-work tools as Dashboard; tasks can be scoped to this portal separately.
+                </p>
+                <div id="admin-accounts-supervisor" class="admin-accounts" data-role="supervisor"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="supervisor">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="reminders" hidden>
+              <div class="admin-block">
+                <h3>Reminders</h3>
+                <div id="admin-accounts-reminders" class="admin-accounts" data-role="reminders"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="reminders">Add login</button>
+              </div>
+            </div>
+            <div class="admin-cred-panel" data-admin-cred-panel="calendar" hidden>
+              <div class="admin-block">
+                <h3>Calendar</h3>
+                <div id="admin-accounts-calendar" class="admin-accounts" data-role="calendar"></div>
+                <button type="button" class="btn ghost admin-add-cred" data-add-cred="calendar">Add login</button>
+              </div>
+            </div>
+            <button type="button" class="btn primary admin-save-cred-tab" id="admin-save-cred-tab" style="margin-top: 1.25rem">
+              Save logins — Work report (field)
+            </button>
+          </form>
+        </div>
+        </div>
+
+        <div id="admin-section-custom" class="admin-section-panel" hidden>
+        <div class="card">
+          <h2>Custom portals</h2>
+          <p class="muted">
+            Build extra portals with your own questions and logins. Users pick a portal after sign-in or use
+            <strong>Switch portal</strong>. The dashboard adds a tab per custom portal for submissions.
+          </p>
+          <div class="admin-custom-create-wrap">
+            <button type="button" class="btn primary admin-custom-create-btn" id="admin-custom-new">
+              + Create new portal
+            </button>
+          </div>
+          <div id="admin-custom-msg" class="success-banner" hidden></div>
+          <p class="muted admin-custom-empty-hint" id="admin-custom-empty-hint">
+            No custom portals yet — use “Create new portal” above.
+          </p>
+          <div
+            id="admin-custom-tabs"
+            class="admin-cred-tabs admin-custom-tabs"
+            role="tablist"
+            aria-label="Custom portals"
+            hidden
+          ></div>
+          <div id="admin-custom-editor" class="admin-custom-editor" hidden style="margin-top: 1.25rem">
+            <h3 id="admin-custom-editor-heading">New portal</h3>
+            <input type="hidden" id="admin-custom-edit-id" value="" />
+            <label class="field" style="margin-top: 0.75rem">
+              <span class="field-label">Portal title (shown in header and menus)</span>
+              <input type="text" id="admin-custom-title" maxlength="120" autocomplete="off" placeholder="e.g. Site inspection" />
+            </label>
+            <div class="admin-custom-section">
+              <span class="field-label">Questions</span>
+              <p class="hint" style="margin: 0 0 0.5rem">
+                Add fields visitors will fill in. For <strong>Dropdown</strong>, list choices separated by commas.
+                <strong>Photo / image</strong> lets them use the camera or upload a picture (same as the work report form).
+              </p>
+              <div id="admin-custom-questions" class="admin-custom-questions"></div>
+              <button type="button" class="btn ghost" id="admin-custom-add-question">Add question</button>
+            </div>
+            <div class="admin-custom-section" style="margin-top: 1.25rem">
+              <span class="field-label">Logins for this portal</span>
+              <p class="hint" style="margin: 0 0 0.5rem">At least one username and password. Usernames must be unique within this portal.</p>
+              <div id="admin-custom-creds" class="admin-accounts" data-role="custom"></div>
+              <button type="button" class="btn ghost" id="admin-custom-add-cred">Add login</button>
+            </div>
+            <div class="admin-custom-section" style="margin-top: 1.25rem">
+              <span class="field-label">In-portal reminders (next entry)</span>
+              <p class="hint" style="margin: 0 0 0.5rem">
+                After each submission, if no newer entry is made, a <strong>Reminders</strong> notice appears in this
+                portal after this many <strong>calendar days</strong>. It is shown only in the app (not emailed). Submitting
+                again resets the schedule from the new submission time.
+              </p>
+              <label class="check-row" style="margin-bottom: 0.65rem">
+                <input type="checkbox" id="admin-custom-reminder-enabled" />
+                <span>Enable the Reminders button and schedule for this portal</span>
+              </label>
+              <label class="field" style="margin-top: 0">
+                <span class="field-label">Days after latest submission before reminder shows</span>
+                <input type="number" id="admin-custom-reminder-days" min="1" max="366" step="1" value="7" />
+              </label>
+            </div>
+            <div class="photo-source-row" style="margin-top: 1.25rem">
+              <button type="button" class="btn primary" id="admin-custom-save">Save portal</button>
+              <button type="button" class="btn ghost" id="admin-custom-delete" hidden>Delete portal</button>
+              <button type="button" class="btn ghost" id="admin-custom-cancel">Cancel</button>
+            </div>
+          </div>
+        </div>
+        </div>
+
+        <div class="card admin-email-card">
+          <h2>Reminder emails (EmailJS)</h2>
+          <p class="muted">
+            Browsers cannot send mail by themselves. Use a free
+            <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer">EmailJS</a>
+            account: add an email service, create an email template with variables
+            <code>to_email</code>, <code>title</code>, <code>due</code>, <code>notes</code>, and
+            <code>message</code> (put <code>{{message}}</code> in the body). Set the template “To” field to
+            <code>{{to_email}}</code>. Paste your IDs below.
+          </p>
+          <div id="admin-email-msg" class="success-banner" hidden></div>
+          <form id="admin-email-form" class="form" style="margin-top: 1rem">
+            <div class="field checkbox-field">
+              <span class="field-label">Send email when a reminder time is reached</span>
+              <label class="check-row">
+                <input type="checkbox" id="email-enabled" />
+                <span>Enabled</span>
+              </label>
+            </div>
+            <label class="field">
+              <span class="field-label">Recipient email</span>
+              <input type="email" id="email-to" autocomplete="email" placeholder="you@example.com" />
+            </label>
+            <label class="field">
+              <span class="field-label">EmailJS public key</span>
+              <input type="text" id="email-public-key" autocomplete="off" placeholder="xxxxxxxxxxxx" />
+            </label>
+            <label class="field">
+              <span class="field-label">Service ID</span>
+              <input type="text" id="email-service-id" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span class="field-label">Template ID</span>
+              <input type="text" id="email-template-id" autocomplete="off" />
+            </label>
+            <div class="photo-source-row">
+              <button type="submit" class="btn primary">Save email settings</button>
+              <button type="button" class="btn ghost" id="email-test-btn">Send test email</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
