@@ -982,20 +982,6 @@
     admin: $("#view-admin"),
   };
 
-  (function wireManagerCreatedPortalsOverlay() {
-    const ov = document.getElementById("manager-created-portals-overlay");
-    const panel = document.querySelector(".manager-created-portals-panel");
-    if (panel) {
-      panel.addEventListener("click", (e) => e.stopPropagation());
-    }
-    if (ov) {
-      ov.addEventListener("click", () => {
-        ov.hidden = true;
-        ov.setAttribute("aria-hidden", "true");
-      });
-    }
-  })();
-
   /** Read custom portals + entries from the saved JSON in localStorage (same document as full app state). */
   function parseStoredStateCustomPortalsSlice() {
     try {
