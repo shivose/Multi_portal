@@ -999,6 +999,38 @@ body {
   margin-bottom: 0;
 }
 
+.manager-custom-portals-rail {
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.manager-custom-portals-rail-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.manager-custom-portals-rail-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.manager-custom-portals-rail-buttons .btn.ghost {
+  font-size: 0.875rem;
+}
+
+.manager-custom-portals-rail-empty {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
 .dash-portal-tabs {
   display: flex;
   flex-wrap: wrap;

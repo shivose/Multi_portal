@@ -394,53 +394,6 @@
     return serverNorm;
   }
 
-  /**
-   * Manager tab can hold stale `state` while localStorage was updated by Admin (or another tab).
-   * Union portals + entries from the latest localStorage into `state` before rendering the dashboard.
-   */
-  function rehydrateCustomPortalsFromBrowserStorage() {
-    let raw = null;
-    try {
-      raw = localStorage.getItem(STORAGE_KEY);
-    } catch (e) {
-      return;
-    }
-    if (!raw || raw === "") return;
-    let parsed = null;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    if (!parsed || typeof parsed !== "object") return;
-    const fromLs = coerceRawCustomPortalsToArray(parsed.customPortals);
-    if (fromLs.length === 0) return;
-    if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
-      state.customPortalEntries = {};
-    }
-    const byId = new Map(getCustomPortalsList().map((p) => [String(p.id).trim(), p]));
-    const incEntries =
-      parsed.customPortalEntries && typeof parsed.customPortalEntries === "object"
-        ? parsed.customPortalEntries
-        : {};
-    for (const pr of fromLs) {
-      const np = normalizeCustomPortal(pr);
-      if (!np) continue;
-      const id = String(np.id).trim();
-      if (!id) continue;
-      if (!byId.has(id)) byId.set(id, np);
-    }
-    state.customPortals = Array.from(byId.values());
-    for (const p of state.customPortals) {
-      const pid = String(p.id).trim();
-      const cur = state.customPortalEntries[pid];
-      const inc = incEntries[pid];
-      if (Array.isArray(inc) && (!Array.isArray(cur) || cur.length === 0)) {
-        state.customPortalEntries[pid] = inc.slice();
-      }
-    }
-  }
-
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -867,15 +820,51 @@
     admin: $("#view-admin"),
   };
 
+  /**
+   * Single source for “which custom portals exist”: union in-memory `state` and latest localStorage.
+   * Writes merged portals (and any missing entry arrays from disk) back onto `state` so charts/tables match.
+   */
   function getCustomPortalsList() {
     if (!state || typeof state !== "object") return [];
-    const raw = state.customPortals;
-    if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
-      state.customPortals = Object.values(raw);
-    } else if (!Array.isArray(raw)) {
-      state.customPortals = [];
+    const byId = new Map();
+    const addRaw = (item) => {
+      const p = normalizeCustomPortal(item);
+      if (!p) return;
+      const id = String(p.id).trim();
+      if (!id) return;
+      if (!byId.has(id)) byId.set(id, p);
+    };
+    const sc = state.customPortals;
+    if (Array.isArray(sc)) sc.forEach(addRaw);
+    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addRaw);
+    try {
+      const disk = localStorage.getItem(STORAGE_KEY);
+      if (disk) {
+        const j = JSON.parse(disk);
+        if (j && typeof j === "object") {
+          coerceRawCustomPortalsToArray(j.customPortals).forEach(addRaw);
+          if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
+            state.customPortalEntries = {};
+          }
+          const ent =
+            j.customPortalEntries && typeof j.customPortalEntries === "object"
+              ? j.customPortalEntries
+              : {};
+          for (const id of byId.keys()) {
+            const inc = ent[id];
+            const cur = state.customPortalEntries[id];
+            if (Array.isArray(inc) && (!Array.isArray(cur) || cur.length === 0)) {
+              state.customPortalEntries[id] = inc.slice();
+            }
+          }
+        }
+      }
+    } catch (e) {
+      /* ignore corrupt LS */
     }
-    return state.customPortals.filter((p) => p && p.id != null && String(p.id).trim());
+    const out = Array.from(byId.values());
+    state.customPortals = out;
+    return out;
   }
 
   /** Resolves a portal whether `id` was stored as string or number (JSON) or with stray whitespace. */
@@ -1353,7 +1342,6 @@
       setSurveyPortalSubView("form");
       startTsTick("#survey-timestamp");
     } else if (role === "dashboard" || role === "supervisor") {
-      rehydrateCustomPortalsFromBrowserStorage();
       stopTsTick();
       dashboardFilter = "all";
       setDashboardTabsUI("all");
@@ -2296,13 +2284,16 @@
   }
 
   function setDashboardTabsUI(filter) {
-    const tabs = $("#dashboard-portal-tabs");
-    if (!tabs) return;
-    tabs.querySelectorAll("[data-dash-tab]").forEach((btn) => {
-      const on = btn.getAttribute("data-dash-tab") === filter;
-      btn.classList.toggle("is-active", on);
-      btn.setAttribute("aria-selected", on ? "true" : "false");
-    });
+    const apply = (root) => {
+      if (!root) return;
+      root.querySelectorAll("[data-dash-tab]").forEach((btn) => {
+        const on = btn.getAttribute("data-dash-tab") === filter;
+        btn.classList.toggle("is-active", on);
+        btn.setAttribute("aria-selected", on ? "true" : "false");
+      });
+    };
+    apply($("#dashboard-portal-tabs"));
+    apply($("#manager-custom-portals-rail"));
   }
 
   function destroyDashboardCharts() {
@@ -2610,10 +2601,48 @@
     }
   }
 
+  function renderManagerCustomPortalsRail() {
+    const rail = document.getElementById("manager-custom-portals-rail");
+    if (!rail) return;
+    if (!isDashboardManagerRole()) {
+      rail.hidden = true;
+      return;
+    }
+    rail.hidden = false;
+    rail.innerHTML = "";
+    const title = document.createElement("div");
+    title.className = "manager-custom-portals-rail-title";
+    title.textContent = "Custom portals (from Admin) — view data:";
+    rail.appendChild(title);
+    const row = document.createElement("div");
+    row.className = "manager-custom-portals-rail-buttons";
+    const portals = getCustomPortalsList();
+    if (portals.length === 0) {
+      const em = document.createElement("p");
+      em.className = "muted manager-custom-portals-rail-empty";
+      em.innerHTML =
+        "No portals found in this browser’s saved data. Create them under <strong>Admin</strong> → Custom portals, or use <strong>node server.js</strong> so all devices share <code>/api/state</code>.";
+      row.appendChild(em);
+    } else {
+      portals.forEach((p) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn ghost manager-custom-portal-jump";
+        b.setAttribute("data-dash-tab", portalRoleKey(p.id));
+        b.setAttribute("role", "tab");
+        const t = p.title != null ? String(p.title) : "Portal";
+        b.textContent = t.length > 40 ? t.slice(0, 38) + "…" : t;
+        b.title = "Open dashboard charts and submission table for this portal";
+        row.appendChild(b);
+      });
+    }
+    rail.appendChild(row);
+  }
+
   function renderDashboard() {
-    if (isDashboardManagerRole()) rehydrateCustomPortalsFromBrowserStorage();
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
+    renderManagerCustomPortalsRail();
     const cpEmptyHint = $("#dashboard-custom-portals-empty-hint");
     if (cpEmptyHint) {
       cpEmptyHint.hidden = !(isDashboardManagerRole() && getCustomPortalsList().length === 0);
@@ -3653,15 +3682,20 @@
     }
 
     const dashTabBtn = closestFromEvent(ev, "[data-dash-tab]");
-    const dashTabsRoot = $("#dashboard-portal-tabs");
-    if (dashTabBtn && dashTabsRoot && dashTabsRoot.contains(dashTabBtn)) {
-      const f = dashTabBtn.getAttribute("data-dash-tab");
-      if (["all", "field", "survey"].includes(f) || (f && f.startsWith("cp_"))) {
-        dashboardFilter = f;
-        setDashboardManagerSection("analytics");
-        renderDashboard();
+    if (dashTabBtn && isDashboardManagerRole()) {
+      const dashTabsRoot = $("#dashboard-portal-tabs");
+      const mgrRail = $("#manager-custom-portals-rail");
+      const inTabs = dashTabsRoot && dashTabsRoot.contains(dashTabBtn);
+      const inRail = mgrRail && mgrRail.contains(dashTabBtn);
+      if (inTabs || inRail) {
+        const f = dashTabBtn.getAttribute("data-dash-tab");
+        if (["all", "field", "survey"].includes(f) || (f && f.startsWith("cp_"))) {
+          dashboardFilter = f;
+          setDashboardManagerSection("analytics");
+          renderDashboard();
+        }
+        return;
       }
-      return;
     }
 
     const dashSecBtn = closestFromEvent(ev, "[data-dash-section]");

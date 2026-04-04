@@ -1,5 +1,5 @@
 /* Multi Login Portal — bump CACHE when you change shell assets */
-const CACHE = "multi-portal-shell-v9";
+const CACHE = "multi-portal-shell-v10";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
