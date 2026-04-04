@@ -537,10 +537,19 @@
     }
   }
 
+  function responseLooksLikeJsonState(res) {
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    return ct.includes("json");
+  }
+
   async function pullServerOnBoot() {
     try {
       const res = await fetch(apiUrl("/api/state"), { headers: { Accept: "application/json" } });
       if (!res.ok) {
+        apiSyncEnabled = false;
+        return;
+      }
+      if (!responseLooksLikeJsonState(res)) {
         apiSyncEnabled = false;
         return;
       }
@@ -573,6 +582,7 @@
         cache: "no-store",
       });
       if (!res.ok) return;
+      if (!responseLooksLikeJsonState(res)) return;
       const j = await res.json();
       const rev = Number(j.revision) || 0;
       if (rev <= serverRevision) return;
@@ -605,6 +615,7 @@
         cache: "no-store",
       });
       if (!res.ok) return;
+      if (!responseLooksLikeJsonState(res)) return;
       const j = await res.json();
       if (j.state == null || typeof j.state !== "object") return;
       serverRevision = Number(j.revision) || serverRevision;
@@ -989,20 +1000,39 @@
     }
   }
 
+  function pickRicherCustomPortalDef(existing, incoming) {
+    if (!existing) return incoming;
+    if (!incoming) return existing;
+    const a = (existing.fields || []).length;
+    const b = (incoming.fields || []).length;
+    if (b > a) return incoming;
+    if (a > b) return existing;
+    return incoming;
+  }
+
   /**
-   * Custom portals visible to Manager (and Admin): **localStorage wins**. RAM cannot hide what Admin saved.
-   * In-memory `state` only adds portal ids that are not yet on disk (e.g. save not flushed).
+   * Union in-memory `state.customPortals` with localStorage so Manager sees portals after a server pull
+   * even if disk was briefly stale; ties prefer the richer definition (usually the latest save).
    */
   function getCustomPortalsList() {
     if (!state || typeof state !== "object") return [];
     const byId = new Map();
+    const mergeOne = (raw) => {
+      const p = normalizeCustomPortal(raw);
+      if (!p) return;
+      const id = String(p.id).trim();
+      if (!id) return;
+      const ex = byId.get(id);
+      byId.set(id, pickRicherCustomPortalDef(ex, p));
+    };
+
+    const sc0 = state.customPortals;
+    if (Array.isArray(sc0)) sc0.forEach(mergeOne);
+    else if (sc0 != null && typeof sc0 === "object") Object.values(sc0).forEach(mergeOne);
 
     const slice = parseStoredStateCustomPortalsSlice();
     if (slice) {
-      slice.portals.forEach((p) => {
-        const id = String(p.id).trim();
-        if (id) byId.set(id, p);
-      });
+      slice.portals.forEach(mergeOne);
       if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
         state.customPortalEntries = {};
       }
@@ -1014,35 +1044,7 @@
           state.customPortalEntries[id] = inc.slice();
         }
       }
-    } else {
-      const sc = state.customPortals;
-      if (Array.isArray(sc)) {
-        sc.forEach((item) => {
-          const p = normalizeCustomPortal(item);
-          if (!p) return;
-          const id = String(p.id).trim();
-          if (id) byId.set(id, p);
-        });
-      } else if (sc != null && typeof sc === "object") {
-        Object.values(sc).forEach((item) => {
-          const p = normalizeCustomPortal(item);
-          if (!p) return;
-          const id = String(p.id).trim();
-          if (id) byId.set(id, p);
-        });
-      }
     }
-
-    const addFromStateIfNewId = (item) => {
-      const p = normalizeCustomPortal(item);
-      if (!p) return;
-      const id = String(p.id).trim();
-      if (!id || byId.has(id)) return;
-      byId.set(id, p);
-    };
-    const sc = state.customPortals;
-    if (Array.isArray(sc)) sc.forEach(addFromStateIfNewId);
-    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addFromStateIfNewId);
 
     const out = Array.from(byId.values());
     state.customPortals = out;
