@@ -372,22 +372,13 @@
       .filter(Boolean);
     const byId = new Map(list.map((p) => [String(p.id).trim(), p]));
 
-    function portalShouldPreferLocal(existing, incoming) {
-      if (!existing) return true;
-      const ex = (existing.fields || []).length;
-      const inc = (incoming.fields || []).length;
-      if (inc > ex) return true;
-      if (ex === 0 && inc > 0) return true;
-      return false;
-    }
-
     for (const raw of localPortals) {
       const np = normalizeCustomPortal(raw);
       if (!np) continue;
       const id = String(np.id).trim();
       if (!id) continue;
       const ex = byId.get(id);
-      if (!ex || portalShouldPreferLocal(ex, np)) {
+      if (!ex || customPortalDefinitionShouldPrefer(np, ex)) {
         byId.set(id, np);
       }
     }
@@ -854,29 +845,47 @@
     admin: $("#view-admin"),
   };
 
+  /** Prefer `incoming` when it carries a richer portal definition (Admin save vs stale RAM/server). */
+  function customPortalDefinitionShouldPrefer(incoming, existing) {
+    if (!existing) return true;
+    const ex = (existing.fields || []).length;
+    const inc = (incoming.fields || []).length;
+    if (inc > ex) return true;
+    if (ex === 0 && inc > 0) return true;
+    return false;
+  }
+
   /**
    * Single source for “which custom portals exist”: union in-memory `state` and latest localStorage.
+   * localStorage may hold the Admin’s latest save while `state` is stale (e.g. after sync); disk can replace same id.
    * Writes merged portals (and any missing entry arrays from disk) back onto `state` so charts/tables match.
    */
   function getCustomPortalsList() {
     if (!state || typeof state !== "object") return [];
     const byId = new Map();
-    const addRaw = (item) => {
+    const addFromSource = (item, allowUpgrade) => {
       const p = normalizeCustomPortal(item);
       if (!p) return;
       const id = String(p.id).trim();
       if (!id) return;
-      if (!byId.has(id)) byId.set(id, p);
+      const ex = byId.get(id);
+      if (!ex) {
+        byId.set(id, p);
+        return;
+      }
+      if (allowUpgrade && customPortalDefinitionShouldPrefer(p, ex)) {
+        byId.set(id, p);
+      }
     };
     const sc = state.customPortals;
-    if (Array.isArray(sc)) sc.forEach(addRaw);
-    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addRaw);
+    if (Array.isArray(sc)) sc.forEach((item) => addFromSource(item, false));
+    else if (sc != null && typeof sc === "object") Object.values(sc).forEach((item) => addFromSource(item, false));
     try {
       const disk = localStorage.getItem(STORAGE_KEY);
       if (disk) {
         const j = JSON.parse(disk);
         if (j && typeof j === "object") {
-          coerceRawCustomPortalsToArray(j.customPortals).forEach(addRaw);
+          coerceRawCustomPortalsToArray(j.customPortals).forEach((item) => addFromSource(item, true));
           if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
             state.customPortalEntries = {};
           }
@@ -3633,6 +3642,7 @@
   if (loginFormEl) {
     loginFormEl.addEventListener("submit", (ev) => {
       ev.preventDefault();
+      applyLatestCustomPortalsFromLocalStorageToState();
       setError("#login-error", "");
       const uIn = $("#login-username");
       const pIn = $("#login-password");
