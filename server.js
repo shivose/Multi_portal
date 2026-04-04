@@ -7,6 +7,7 @@ const portalStore = require("./lib/portal-store");
 const app = express();
 const PORT = Number.parseInt(process.env.PORT, 10) || 3000;
 const publicDir = path.join(__dirname, "public");
+const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
 
 app.disable("x-powered-by");
 
@@ -15,6 +16,18 @@ app.use(
     limit: process.env.JSON_BODY_LIMIT || "50mb",
   })
 );
+
+/** Lets the UI load from another origin (e.g. static host) while API stays on this server. */
+app.use("/api", (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
+  res.setHeader("Access-Control-Allow-Methods", "GET,PUT,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+  if (req.method === "OPTIONS") {
+    res.status(204).end();
+    return;
+  }
+  next();
+});
 
 /** Centralized app data: all clients read/write this document (optimistic revision). */
 app.get("/api/state", (req, res) => {

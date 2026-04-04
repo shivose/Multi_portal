@@ -344,10 +344,64 @@
   }
 
   /**
-   * Merge custom portals + submission rows from a local snapshot (localStorage string or object)
-   * into a target state object. Union by portal id; when the same id exists on both sides, prefer
-   * the copy with more form fields so Admin definitions on this browser beat an empty/stale server row.
-   * Also copies customPortalEntries from local when the server side is missing or empty.
+   * After GET /api/state: portal **definitions** come from the server (Admin on another computer).
+   * Local browser data only **adds** custom form submissions that are not yet on the server (same id deduped).
+   */
+  function mergeServerStatePreferCentral(serverNorm, localRaw) {
+    if (!serverNorm || typeof serverNorm !== "object") return serverNorm;
+    serverNorm.customPortals = coerceRawCustomPortalsToArray(serverNorm.customPortals)
+      .map((p) => normalizeCustomPortal(p))
+      .filter(Boolean);
+    if (!serverNorm.customPortalEntries || typeof serverNorm.customPortalEntries !== "object") {
+      serverNorm.customPortalEntries = {};
+    }
+    let localParsed = null;
+    if (localRaw != null && localRaw !== "") {
+      try {
+        localParsed = typeof localRaw === "string" ? JSON.parse(localRaw) : localRaw;
+      } catch (e) {
+        localParsed = null;
+      }
+    }
+    if (!localParsed || typeof localParsed !== "object") return serverNorm;
+    const localEntries =
+      localParsed.customPortalEntries && typeof localParsed.customPortalEntries === "object"
+        ? localParsed.customPortalEntries
+        : {};
+    const serverPortalIds = new Set(
+      serverNorm.customPortals.map((p) => String(p && p.id).trim()).filter(Boolean)
+    );
+    for (const pid of Object.keys(localEntries)) {
+      if (!serverPortalIds.has(pid)) continue;
+      const loc = localEntries[pid];
+      if (!Array.isArray(loc) || loc.length === 0) continue;
+      let srv = serverNorm.customPortalEntries[pid];
+      if (!Array.isArray(srv)) srv = [];
+      const seen = new Set();
+      for (const e of srv) {
+        if (e && e.id != null) seen.add(String(e.id));
+      }
+      const merged = srv.slice();
+      for (const e of loc) {
+        if (!e) continue;
+        if (e.id == null) {
+          merged.push(e);
+          continue;
+        }
+        const eid = String(e.id);
+        if (!seen.has(eid)) {
+          seen.add(eid);
+          merged.push(e);
+        }
+      }
+      serverNorm.customPortalEntries[pid] = merged;
+    }
+    return serverNorm;
+  }
+
+  /**
+   * Offline / no API: merge custom portals + submission rows from localStorage into target state.
+   * Local definitions win on id collision (same machine).
    */
   function mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw) {
     if (!serverNorm || typeof serverNorm !== "object") return serverNorm;
@@ -396,8 +450,9 @@
     return serverNorm;
   }
 
-  /** Re-read custom portals from localStorage into live `state` (Manager/Admin same-browser fix). */
+  /** Re-read custom portals from localStorage into live `state` (only when not using central server). */
   function applyLatestCustomPortalsFromLocalStorageToState() {
+    if (apiSyncEnabled && serverSyncReady) return;
     let raw = null;
     try {
       raw = localStorage.getItem(STORAGE_KEY);
@@ -461,7 +516,7 @@
   }
 
   async function flushServerPushNow() {
-    if (!apiSyncEnabled) return;
+    if (!apiSyncEnabled) return false;
     try {
       const res = await fetch(apiUrl("/api/state"), {
         method: "PUT",
@@ -470,13 +525,15 @@
       });
       if (res.status === 409) {
         window.location.reload();
-        return;
+        return false;
       }
-      if (!res.ok) return;
+      if (!res.ok) return false;
       const j = await res.json();
       if (j && j.revision != null) serverRevision = Number(j.revision) || serverRevision;
+      return true;
     } catch (e) {
       console.warn("Server sync push failed", e);
+      return false;
     }
   }
 
@@ -491,8 +548,6 @@
       serverRevision = Number(j.revision) || 0;
       lastServerPullHadDocument = j.state != null && typeof j.state === "object";
       if (lastServerPullHadDocument) {
-        /** In-memory state from loadState() can hold portals even when the server file is an old/minimal JSON (e.g. only admin creds). localStorage alone can be null on first paint in some environments — always merge this snapshot too. */
-        const prePullSnapshot = JSON.stringify(state);
         let localRaw = null;
         try {
           localRaw = localStorage.getItem(STORAGE_KEY);
@@ -500,9 +555,7 @@
           /* ignore */
         }
         const serverNorm = normalizeParsedState(j.state);
-        let merged = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, prePullSnapshot);
-        merged = mergeLocalOnlyCustomPortalsIntoServerState(merged, localRaw);
-        state = merged;
+        state = mergeServerStatePreferCentral(serverNorm, localRaw);
         persistStateLocal(state);
       }
     } catch (e) {
@@ -525,7 +578,6 @@
       if (rev <= serverRevision) return;
       serverRevision = rev;
       if (j.state != null && typeof j.state === "object") {
-        const prePollSnapshot = JSON.stringify(state);
         let localRaw = null;
         try {
           localRaw = localStorage.getItem(STORAGE_KEY);
@@ -533,13 +585,39 @@
           /* ignore */
         }
         const serverNorm = normalizeParsedState(j.state);
-        let merged = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, prePollSnapshot);
-        merged = mergeLocalOnlyCustomPortalsIntoServerState(merged, localRaw);
-        state = merged;
+        state = mergeServerStatePreferCentral(serverNorm, localRaw);
         persistStateLocal(state);
         snapshotStateStorageRaw();
         if (sessionRole) enterPortal(sessionRole);
       }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  /** Manager on another computer: always pull latest server document before drawing dashboards. */
+  async function pullLatestServerStateForDashboard() {
+    if (!apiSyncEnabled || !serverSyncReady) return;
+    try {
+      const res = await fetch(apiUrl("/api/state"), {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!res.ok) return;
+      const j = await res.json();
+      if (j.state == null || typeof j.state !== "object") return;
+      serverRevision = Number(j.revision) || serverRevision;
+      let localRaw = null;
+      try {
+        localRaw = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        /* ignore */
+      }
+      const serverNorm = normalizeParsedState(j.state);
+      state = mergeServerStatePreferCentral(serverNorm, localRaw);
+      persistStateLocal(state);
+      snapshotStateStorageRaw();
     } catch (e) {
       /* ignore */
     }
@@ -834,18 +912,27 @@
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
       if (isDashboardManagerRole() && (sessionRole === "dashboard" || sessionRole === "supervisor")) {
-        applyLatestCustomPortalsFromLocalStorageToState();
-        getCustomPortalsList();
-        if (views.dashboard && !views.dashboard.hidden) renderDashboard();
+        void (async () => {
+          await pullLatestServerStateForDashboard();
+          applyLatestCustomPortalsFromLocalStorageToState();
+          getCustomPortalsList();
+          if (views.dashboard && !views.dashboard.hidden) renderDashboard();
+        })();
       }
     });
 
-    // Fallback poll (in case storage events are missed).
+    window.addEventListener("online", () => {
+      void pullLatestServerStateForDashboard().then(() => {
+        if (isDashboardManagerRole() && views.dashboard && !views.dashboard.hidden) renderDashboard();
+      });
+    });
+
+    // Poll server often so Manager sees Admin changes across computers without refresh.
     setInterval(() => {
       if (document.visibilityState !== "visible") return;
       externalStateRefreshAssignedWorkOnly();
       pollServerForNewerRevision();
-    }, 20000);
+    }, 5000);
   }
 
   const $ = (sel, root = document) => root.querySelector(sel);
@@ -1438,7 +1525,6 @@
       startTsTick("#survey-timestamp");
     } else if (role === "dashboard" || role === "supervisor") {
       stopTsTick();
-      applyLatestCustomPortalsFromLocalStorageToState();
       dashboardFilter = "all";
       setDashboardTabsUI("all");
       const df = $("#dash-date-from");
@@ -1453,9 +1539,13 @@
       if (drb) drb.textContent = role === "supervisor" ? "Supervisor" : "Manager";
       setDashboardManagerSection("analytics");
       showView("dashboard");
-      renderDashboard();
-      renderManagerAssignWorkUI();
-      renderAssigneeWorkMount("dashboard-assigned-work", role, true);
+      void (async () => {
+        await pullLatestServerStateForDashboard();
+        applyLatestCustomPortalsFromLocalStorageToState();
+        renderDashboard();
+        renderManagerAssignWorkUI();
+        renderAssigneeWorkMount("dashboard-assigned-work", role, true);
+      })();
     } else {
       const cpId = parsePortalIdFromRole(role);
       if (cpId) {
@@ -4461,21 +4551,37 @@
         followUpReminderEnabled: !!(remEn && remEn.checked),
         followUpReminderDays,
       };
-      const list = getCustomPortalsList().slice();
-      const nid = String(newPortal.id).trim();
-      const idx = list.findIndex((p) => String(p.id).trim() === nid);
-      if (idx >= 0) list[idx] = newPortal;
-      else list.push(newPortal);
-      state.customPortals = list;
-      if (!state.customPortalEntries) state.customPortalEntries = {};
-      if (!state.customPortalEntries[newPortal.id]) state.customPortalEntries[newPortal.id] = [];
-      saveState(state);
-      if (apiSyncEnabled && serverSyncReady) void flushServerPushNow();
-      renderAdminCustomPortalsList();
-      const saved = findCustomPortalById(newPortal.id);
-      if (saved) openAdminCustomEditor(saved);
-      setAdminCustomMsg("Portal saved.", "ok");
-      renderDashboard();
+      void (async () => {
+        const list = getCustomPortalsList().slice();
+        const nid = String(newPortal.id).trim();
+        const idx = list.findIndex((p) => String(p.id).trim() === nid);
+        if (idx >= 0) list[idx] = newPortal;
+        else list.push(newPortal);
+        state.customPortals = list;
+        if (!state.customPortalEntries) state.customPortalEntries = {};
+        if (!state.customPortalEntries[newPortal.id]) state.customPortalEntries[newPortal.id] = [];
+        saveState(state);
+        renderAdminCustomPortalsList();
+        const saved = findCustomPortalById(newPortal.id);
+        if (saved) openAdminCustomEditor(saved);
+        renderDashboard();
+        if (!apiSyncEnabled || !serverSyncReady) {
+          setAdminCustomMsg(
+            "Portal saved on this device only. Run node server.js on one machine and open the app from http://THAT-IP:3000 on Admin and Manager so portals sync.",
+            "error"
+          );
+          return;
+        }
+        const pushed = await flushServerPushNow();
+        if (!pushed) {
+          setAdminCustomMsg(
+            "Portal saved locally but the server rejected the sync. Check the server is running and refresh this page.",
+            "error"
+          );
+          return;
+        }
+        setAdminCustomMsg("Portal saved and sent to the server. Manager can open the same app URL to see it.", "ok");
+      })();
     });
   }
   const adminCustomDelete = $("#admin-custom-delete");
@@ -4490,21 +4596,30 @@
       ) {
         return;
       }
-      state.customPortals = getCustomPortalsList().filter((x) => x.id !== id);
-      if (state.customPortalEntries && state.customPortalEntries[id]) {
-        delete state.customPortalEntries[id];
-      }
-      saveState(state);
-      if (apiSyncEnabled && serverSyncReady) void flushServerPushNow();
-      renderAdminCustomPortalsList();
-      const rest = getCustomPortalsList();
-      if (rest.length > 0) {
-        setAdminCustomTab(rest[0].id);
-      } else {
-        closeAdminCustomEditor();
-      }
-      setAdminCustomMsg("Portal deleted.", "ok");
-      renderDashboard();
+      void (async () => {
+        state.customPortals = getCustomPortalsList().filter((x) => x.id !== id);
+        if (state.customPortalEntries && state.customPortalEntries[id]) {
+          delete state.customPortalEntries[id];
+        }
+        saveState(state);
+        renderAdminCustomPortalsList();
+        const rest = getCustomPortalsList();
+        if (rest.length > 0) {
+          setAdminCustomTab(rest[0].id);
+        } else {
+          closeAdminCustomEditor();
+        }
+        renderDashboard();
+        if (apiSyncEnabled && serverSyncReady) {
+          const ok = await flushServerPushNow();
+          setAdminCustomMsg(
+            ok ? "Portal deleted and synced to server." : "Deleted locally; server sync failed — refresh and retry.",
+            ok ? "ok" : "error"
+          );
+        } else {
+          setAdminCustomMsg("Portal deleted on this device only.", "ok");
+        }
+      })();
     });
   }
   const viewAdmin = $("#view-admin");
@@ -4640,6 +4755,17 @@
     }
     serverSyncReady = true;
     scheduleServerPush();
+    const syncHint = document.getElementById("login-sync-hint");
+    if (syncHint) {
+      if (!apiSyncEnabled) {
+        syncHint.hidden = false;
+        syncHint.textContent =
+          "No shared server: data stays on this PC only. For Admin + Manager on different computers, run node server.js on one machine, then open http://THAT-COMPUTER-IP:3000 on every PC (same Wi‑Fi / network).";
+      } else {
+        syncHint.hidden = true;
+        syncHint.textContent = "";
+      }
+    }
     if (!tryRestoreSessionAuth()) {
       showView("login");
     }
