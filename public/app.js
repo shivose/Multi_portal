@@ -703,6 +703,13 @@
     return el && typeof el.closest === "function" ? el.closest(selector) : null;
   }
 
+  /** For `Node.contains` / containment checks when `ev.target` may be a Text node. */
+  function elementFromEventTarget(ev) {
+    if (!ev || ev.target == null) return null;
+    const t = ev.target;
+    return t.nodeType === 1 ? t : t.parentElement;
+  }
+
   function togglePasswordVisibility(button, input) {
     if (!button || !input) return;
     const show = input.type === "password";
@@ -3444,6 +3451,75 @@
     console.error("multi-login-portal: missing .app root; buttons will not work.");
   }
   if (appRoot) appRoot.addEventListener("click", (ev) => {
+    const passBtn = closestFromEvent(ev, ".btn-toggle-pass");
+    if (passBtn) {
+      let input = null;
+      if (passBtn.id === "login-toggle-pass") {
+        input = document.getElementById("login-password");
+      } else {
+        const wrap = passBtn.closest(".password-with-toggle");
+        input =
+          wrap &&
+          (wrap.querySelector(".admin-cred-pass") ||
+            wrap.querySelector('input[type="password"]'));
+      }
+      if (input) {
+        togglePasswordVisibility(passBtn, input);
+        return;
+      }
+    }
+
+    const secBtn = closestFromEvent(ev, "[data-admin-section]");
+    const secTabsRoot = $("#admin-section-tabs");
+    if (secBtn && secTabsRoot && secTabsRoot.contains(secBtn)) {
+      setAdminSection(secBtn.getAttribute("data-admin-section"));
+      return;
+    }
+
+    const credTabBtn = closestFromEvent(ev, "[data-admin-cred-tab]");
+    const credTabsRoot = $("#admin-cred-tabs");
+    if (credTabBtn && credTabsRoot && credTabsRoot.contains(credTabBtn)) {
+      const r = credTabBtn.getAttribute("data-admin-cred-tab");
+      if (ROLE_KEYS.includes(r)) setAdminCredTab(r);
+      return;
+    }
+
+    const custTabBtn = closestFromEvent(ev, "[data-admin-custom-tab]");
+    const custTabsRoot = $("#admin-custom-tabs");
+    if (custTabBtn && custTabsRoot && custTabsRoot.contains(custTabBtn)) {
+      const pid = custTabBtn.getAttribute("data-admin-custom-tab");
+      if (pid) setAdminCustomTab(pid);
+      return;
+    }
+
+    const dashTabBtn = closestFromEvent(ev, "[data-dash-tab]");
+    const dashTabsRoot = $("#dashboard-portal-tabs");
+    if (dashTabBtn && dashTabsRoot && dashTabsRoot.contains(dashTabBtn)) {
+      const f = dashTabBtn.getAttribute("data-dash-tab");
+      if (["all", "field", "survey"].includes(f) || (f && f.startsWith("cp_"))) {
+        dashboardFilter = f;
+        setDashboardTabsUI(f);
+        setDashboardSectionVisibility(f);
+        const ds = getDashboardFilteredDatasets();
+        renderDashboardCharts(ds.field, ds.survey, ds.custom);
+      }
+      return;
+    }
+
+    const dashSecBtn = closestFromEvent(ev, "[data-dash-section]");
+    const dashMgrTabs = $("#dashboard-manager-section-tabs");
+    if (dashSecBtn && dashMgrTabs && dashMgrTabs.contains(dashSecBtn)) {
+      const sec = dashSecBtn.getAttribute("data-dash-section");
+      if (sec === "assign" || sec === "analytics") setDashboardManagerSection(sec);
+      return;
+    }
+
+    const sw = closestFromEvent(ev, "[data-switch-portal]");
+    if (sw && sessionPortalOptions && sessionPortalOptions.length >= 2) {
+      showRolePicker(sessionPortalOptions.slice(), { fromSwitch: true });
+      return;
+    }
+
     const mgrFilter = closestFromEvent(ev, "[data-assign-manager-filter]");
     if (mgrFilter && isDashboardManagerRole()) {
       const mode = mgrFilter.getAttribute("data-assign-manager-filter");
@@ -3464,7 +3540,7 @@
       }
       return;
     }
-    const completeAssign = closestFromEvent(ev, "[data-assign-complete]");
+    const completeAssign = closestFromEvent(ev, ".assign-work-complete-btn");
     if (completeAssign && sessionUsername) {
       const id = completeAssign.getAttribute("data-assign-complete");
       const a = id && (state.workAssignments || []).find((x) => x.id === id);
@@ -3480,13 +3556,9 @@
       }
       return;
     }
-    const sw = closestFromEvent(ev, "[data-switch-portal]");
-    if (sw && sessionPortalOptions && sessionPortalOptions.length >= 2) {
-      showRolePicker(sessionPortalOptions.slice(), { fromSwitch: true });
-      return;
-    }
     const form = $("#custom-portal-form");
-    if (form && form.contains(ev.target)) {
+    const formHit = elementFromEventTarget(ev);
+    if (form && formHit && form.contains(formHit)) {
       const camOpen = closestFromEvent(ev, ".custom-portal-camera-open");
       if (camOpen) {
         ev.preventDefault();
@@ -3506,9 +3578,9 @@
   });
 
   if (appRoot) appRoot.addEventListener("change", (ev) => {
-    const t = ev.target;
+    const t = elementFromEventTarget(ev);
     const form = $("#custom-portal-form");
-    if (!form || !t || t.nodeType !== 1 || !form.contains(t) || !t.matches(".custom-portal-image-file")) return;
+    if (!form || !t || !form.contains(t) || !t.matches(".custom-portal-image-file")) return;
     const fieldId = t.getAttribute("data-field-id");
     const file = t.files && t.files[0];
     if (fieldId) handleCustomPortalImageFileChosen(fieldId, file || null);
@@ -3602,16 +3674,6 @@
   if (cpBtnBack) cpBtnBack.addEventListener("click", () => setCustomPortalSubView("form"));
   const cpBtnAssigned = $("#custom-portal-btn-assigned-work");
   if (cpBtnAssigned) cpBtnAssigned.addEventListener("click", () => setCustomPortalSubView("assigned"));
-
-  const dashManagerTabs = $("#dashboard-manager-section-tabs");
-  if (dashManagerTabs) {
-    dashManagerTabs.addEventListener("click", (ev) => {
-      const btn = closestFromEvent(ev, "[data-dash-section]");
-      if (!btn || !dashManagerTabs.contains(btn)) return;
-      const sec = btn.getAttribute("data-dash-section");
-      if (sec === "assign" || sec === "analytics") setDashboardManagerSection(sec);
-    });
-  }
 
   const viewSurvey = $("#view-survey");
   if (viewSurvey) {
@@ -3992,27 +4054,11 @@
     renderDashboard();
   });
 
-  const loginTogglePass = $("#login-toggle-pass");
-  const loginPasswordEl = $("#login-password");
-  if (loginTogglePass && loginPasswordEl) {
-    loginTogglePass.addEventListener("click", () => {
-      togglePasswordVisibility(loginTogglePass, loginPasswordEl);
-    });
-  }
-
   const adminCredForm = $("#admin-credentials-form");
   if (adminCredForm) adminCredForm.addEventListener("click", (ev) => {
-    const t = ev.target;
-    const el = t && t.nodeType === 1 ? t : t && t.parentElement;
-    const toggleBtn = el && el.closest && el.closest(".btn-toggle-pass");
-    if (toggleBtn && adminCredForm.contains(toggleBtn)) {
-      const wrap = toggleBtn.closest(".password-with-toggle");
-      const input = wrap && wrap.querySelector(".admin-cred-pass");
-      if (input) togglePasswordVisibility(toggleBtn, input);
-      return;
-    }
-    if (el && el.matches && el.matches(".admin-add-cred")) {
-      const role = el.getAttribute("data-add-cred");
+    const addBtn = closestFromEvent(ev, ".admin-add-cred");
+    if (addBtn && adminCredForm.contains(addBtn)) {
+      const role = addBtn.getAttribute("data-add-cred");
       if (!role || !ROLE_KEYS.includes(role)) return;
       const container = document.getElementById(`admin-accounts-${role}`);
       if (!container) return;
@@ -4020,8 +4066,9 @@
       refreshRemoveButtonsVisibility(container);
       return;
     }
-    if (el && el.matches && el.matches(".admin-cred-remove")) {
-      const row = el.closest(".admin-cred-row");
+    const rmBtn = closestFromEvent(ev, ".admin-cred-remove");
+    if (rmBtn && adminCredForm.contains(rmBtn)) {
+      const row = rmBtn.closest(".admin-cred-row");
       const container = row && row.parentElement;
       if (!row || !container || !container.classList.contains("admin-accounts")) return;
       row.remove();
@@ -4032,26 +4079,6 @@
       refreshRemoveButtonsVisibility(container);
     }
   });
-
-  const adminCredTabs = $("#admin-cred-tabs");
-  if (adminCredTabs) {
-    adminCredTabs.addEventListener("click", (ev) => {
-      const btn = closestFromEvent(ev, "[data-admin-cred-tab]");
-      if (!btn || !adminCredTabs.contains(btn)) return;
-      const r = btn.getAttribute("data-admin-cred-tab");
-      if (ROLE_KEYS.includes(r)) setAdminCredTab(r);
-    });
-  }
-
-  const adminSectionTabs = $("#admin-section-tabs");
-  if (adminSectionTabs) {
-    adminSectionTabs.addEventListener("click", (ev) => {
-      const btn = closestFromEvent(ev, "[data-admin-section]");
-      if (!btn || !adminSectionTabs.contains(btn)) return;
-      const s = btn.getAttribute("data-admin-section");
-      setAdminSection(s);
-    });
-  }
 
   const adminSaveCredTab = $("#admin-save-cred-tab");
   if (adminSaveCredTab) {
@@ -4159,15 +4186,6 @@
       renderDashboard();
     });
   }
-  const adminCustomTabs = $("#admin-custom-tabs");
-  if (adminCustomTabs) {
-    adminCustomTabs.addEventListener("click", (ev) => {
-      const btn = closestFromEvent(ev, "[data-admin-custom-tab]");
-      if (!btn || !adminCustomTabs.contains(btn)) return;
-      const id = btn.getAttribute("data-admin-custom-tab");
-      if (id) setAdminCustomTab(id);
-    });
-  }
   const adminCustomDelete = $("#admin-custom-delete");
   if (adminCustomDelete) {
     adminCustomDelete.addEventListener("click", () => {
@@ -4199,8 +4217,7 @@
   const viewAdmin = $("#view-admin");
   if (viewAdmin) {
     viewAdmin.addEventListener("click", (ev) => {
-      const t = ev.target;
-      const credRm = t.closest && t.closest(".admin-cred-remove");
+      const credRm = closestFromEvent(ev, ".admin-cred-remove");
       const credBox = $("#admin-custom-creds");
       if (credRm && credBox && credBox.contains(credRm)) {
         const row = credRm.closest(".admin-cred-row");
@@ -4214,8 +4231,9 @@
         }
         return;
       }
-      if (t.matches && t.matches(".admin-custom-q-remove")) {
-        const row = t.closest(".admin-custom-q-row");
+      const qRm = closestFromEvent(ev, ".admin-custom-q-remove");
+      if (qRm) {
+        const row = qRm.closest(".admin-custom-q-row");
         const qroot = $("#admin-custom-questions");
         if (row && qroot && qroot.contains(row)) {
           row.remove();
@@ -4223,19 +4241,6 @@
             adminAppendQuestionRow(null);
           }
         }
-        return;
-      }
-      const toggleBtn = t.closest && t.closest(".btn-toggle-pass");
-      const editor = $("#admin-custom-editor");
-      if (
-        toggleBtn &&
-        editor &&
-        !editor.hidden &&
-        editor.contains(toggleBtn)
-      ) {
-        const wrap = toggleBtn.closest(".password-with-toggle");
-        const input = wrap && wrap.querySelector(".admin-cred-pass");
-        if (input) togglePasswordVisibility(toggleBtn, input);
       }
     });
   }
@@ -4249,23 +4254,6 @@
       }
     }
   });
-
-  const dashTabs = $("#dashboard-portal-tabs");
-  if (dashTabs) {
-    dashTabs.addEventListener("click", (ev) => {
-      const btn = closestFromEvent(ev, "[data-dash-tab]");
-      if (!btn || !dashTabs.contains(btn)) return;
-      const f = btn.getAttribute("data-dash-tab");
-      if (!["all", "field", "survey"].includes(f) && !(f && f.startsWith("cp_"))) {
-        return;
-      }
-      dashboardFilter = f;
-      setDashboardTabsUI(f);
-      setDashboardSectionVisibility(f);
-      const ds = getDashboardFilteredDatasets();
-      renderDashboardCharts(ds.field, ds.survey, ds.custom);
-    });
-  }
 
   const dashApply = $("#dash-date-apply");
   const dashClear = $("#dash-date-clear");
