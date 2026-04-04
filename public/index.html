@@ -211,149 +211,6 @@
       </main>
     </div>
 
-    <!-- Role: Kitchen / process (restaurant recipes & costing) -->
-    <div id="view-process" hidden>
-      <header class="header">
-        <div>
-          <h1 class="logo">Kitchen &amp; recipes</h1>
-          <span class="role-badge">Process login</span>
-        </div>
-        <div class="header-actions">
-          <button type="button" class="btn ghost" id="process-btn-back-form" hidden>Back to form</button>
-          <button type="button" class="btn ghost btn-with-badge" id="process-btn-assigned-work">
-            Assigned work
-            <span id="process-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
-          </button>
-          <button type="button" class="btn ghost" id="process-btn-view-history">View history</button>
-          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
-          <button type="button" class="btn ghost" data-logout>Log out</button>
-        </div>
-      </header>
-      <main>
-        <div id="process-panel-form">
-          <div class="card">
-            <h2>Recipe cost &amp; preparation</h2>
-            <p class="muted">
-              Add raw materials line by line (ingredient → quantity → unit, then <strong>+ Add next ingredient</strong>).
-              Below, <strong>Dishes &amp; ingredients (saved)</strong> lists each dish’s latest ingredient list for future
-              master pricing. Timestamp is saved when you submit. Use <strong>View history</strong> for past recipes; only
-              the latest entry can be edited.
-            </p>
-            <div class="field timestamp-box" aria-live="polite">
-              <span class="field-label">Current timestamp</span>
-              <strong id="process-timestamp">—</strong>
-            </div>
-            <form id="process-form" class="form" style="margin-top: 1rem" novalidate>
-              <label class="field">
-                <span class="field-label">Recipe / dish name</span>
-                <input type="text" id="process-recipe-name" name="recipeName" maxlength="200" required autocomplete="off" />
-              </label>
-              <label class="field">
-                <span class="field-label">Menu category</span>
-                <select id="process-dish-category" name="dishCategory" required>
-                  <option value="">Select</option>
-                  <option value="appetizer">Appetizer</option>
-                  <option value="main">Main course</option>
-                  <option value="side">Side</option>
-                  <option value="dessert">Dessert</option>
-                  <option value="beverage">Beverage</option>
-                  <option value="other">Other</option>
-                </select>
-              </label>
-              <label class="field">
-                <span class="field-label">Portions (yield)</span>
-                <input type="number" id="process-portions" name="portions" min="1" step="1" value="1" required />
-              </label>
-              <div class="field process-ingredients-block">
-                <span class="field-label">Raw materials (one row per ingredient)</span>
-                <p class="hint" style="margin: 0 0 0.5rem">
-                  Add each ingredient, its quantity, and unit. Use <strong>+ Add next ingredient</strong> for the next
-                  line. Names are stored so you can later attach a master price list and auto-calculate dish cost.
-                </p>
-                <div id="process-ingredients-rows" class="process-ingredients-rows" aria-live="polite"></div>
-                <button type="button" class="btn ghost process-add-ingredient-btn" id="process-add-ingredient">
-                  + Add next ingredient
-                </button>
-              </div>
-              <label class="field">
-                <span class="field-label">Total ingredient cost ($)</span>
-                <input type="number" id="process-ingredient-cost" name="ingredientCost" min="0" step="0.01" required />
-                <span class="hint" style="display: block; margin-top: 0.35rem">
-                  Enter today’s total for this recipe. Later, this can be filled automatically from ingredient master
-                  prices × quantities above.
-                </span>
-              </label>
-              <label class="field">
-                <span class="field-label">Other direct costs ($)</span>
-                <input
-                  type="number"
-                  id="process-other-cost"
-                  name="otherCost"
-                  min="0"
-                  step="0.01"
-                  value="0"
-                  aria-describedby="process-other-hint"
-                />
-                <span id="process-other-hint" class="hint" style="display: block; margin-top: 0.35rem">
-                  Packaging, delivery allocation, smallwares — optional.
-                </span>
-              </label>
-              <label class="field">
-                <span class="field-label">Prep / cooking labor (minutes)</span>
-                <input type="number" id="process-labor-minutes" name="laborMinutes" min="0" step="1" value="0" />
-              </label>
-              <label class="field">
-                <span class="field-label">Labor rate ($ / hour)</span>
-                <input type="number" id="process-labor-rate" name="laborRate" min="0" step="0.01" value="0" />
-              </label>
-              <label class="field">
-                <span class="field-label">Preparation steps</span>
-                <textarea
-                  id="process-prep-steps"
-                  name="prepSteps"
-                  rows="5"
-                  maxlength="6000"
-                  placeholder="Mise en place, cooking steps, holding, plating…"
-                ></textarea>
-              </label>
-              <label class="field">
-                <span class="field-label">Allergens &amp; food safety notes</span>
-                <textarea
-                  id="process-allergens"
-                  name="allergens"
-                  rows="3"
-                  maxlength="2000"
-                  placeholder="e.g. Contains dairy, gluten; cook to 74°C internal…"
-                ></textarea>
-              </label>
-              <div class="portal-form-actions">
-                <button type="submit" class="btn primary" id="process-submit-btn">Save recipe</button>
-                <button type="button" class="btn ghost" id="process-cancel-edit" hidden>Cancel edit</button>
-              </div>
-            </form>
-          </div>
-          <div class="card process-dish-library-card">
-            <h2>Dishes &amp; ingredients (saved)</h2>
-            <p class="muted" style="margin-top: 0">
-              Latest saved version for each dish name (all users on this device). Ingredient lines are kept in
-              structured form for future costing imports.
-            </p>
-            <div id="process-dish-library-mount" class="process-dish-library-mount"></div>
-          </div>
-        </div>
-        <div id="process-panel-history" hidden>
-          <div class="card">
-            <h2>History</h2>
-            <p class="muted">Newest first. Only your latest recipe sheet can be edited.</p>
-            <div id="process-history-list" class="portal-history-list"></div>
-          </div>
-        </div>
-        <div id="process-panel-assigned" hidden>
-          <div id="process-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
-        </div>
-      </main>
-    </div>
-
     <!-- Admin-defined custom portal (dynamic form) -->
     <div id="view-custom-portal" hidden>
       <header class="header">
@@ -624,15 +481,6 @@
           <button type="button" class="nav-btn" role="tab" data-dash-tab="survey" aria-selected="false">
             Survey
           </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="process" aria-selected="false">
-            Kitchen / recipes
-          </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="reminders" aria-selected="false">
-            Reminders
-          </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="calendar" aria-selected="false">
-            Calendar tasks
-          </button>
         </div>
 
         <div class="dash-grid" id="dash-stats-grid">
@@ -644,21 +492,9 @@
             <div id="stat-survey-count" class="stat-value">0</div>
             <div class="stat-label">Survey responses</div>
           </div>
-          <div class="stat" data-dash-for="process">
-            <div id="stat-process-count" class="stat-value">0</div>
-            <div class="stat-label">Recipe sheets</div>
-          </div>
           <div class="stat" data-dash-for="field">
             <div id="stat-work-yes" class="stat-value">0</div>
             <div class="stat-label">Reports: work done = yes</div>
-          </div>
-          <div class="stat" data-dash-for="reminders">
-            <div id="stat-reminders-count" class="stat-value">0</div>
-            <div class="stat-label">Reminders set</div>
-          </div>
-          <div class="stat" data-dash-for="calendar">
-            <div id="stat-calendar-count" class="stat-value">0</div>
-            <div class="stat-label">Calendar tasks</div>
           </div>
         </div>
 
@@ -682,27 +518,6 @@
             <p class="muted" style="margin-top: 0">Survey submissions</p>
             <div class="dash-chart-canvas-wrap">
               <canvas id="chart-survey-sex" aria-label="Chart of survey counts by sex"></canvas>
-            </div>
-          </div>
-          <div class="card dash-chart-card" data-dash-for="process">
-            <h3>Recipes by category</h3>
-            <p class="muted" style="margin-top: 0">Kitchen / process login (in date range)</p>
-            <div class="dash-chart-canvas-wrap">
-              <canvas id="chart-process-category" aria-label="Chart of recipe counts by menu category"></canvas>
-            </div>
-          </div>
-          <div class="card dash-chart-card" data-dash-for="reminders">
-            <h3>Reminder status</h3>
-            <p class="muted" style="margin-top: 0">Scheduled, due soon, or past due</p>
-            <div class="dash-chart-canvas-wrap">
-              <canvas id="chart-reminder-status" aria-label="Chart of reminder statuses"></canvas>
-            </div>
-          </div>
-          <div class="card dash-chart-card" data-dash-for="calendar">
-            <h3>Calendar tasks</h3>
-            <p class="muted" style="margin-top: 0">Done vs open (in date range)</p>
-            <div class="dash-chart-canvas-wrap">
-              <canvas id="chart-calendar-done" aria-label="Chart of calendar tasks done versus open"></canvas>
             </div>
           </div>
         </div>
@@ -744,167 +559,6 @@
               </thead>
               <tbody id="dash-survey-body"></tbody>
             </table>
-          </div>
-        </div>
-        <div class="card dash-table-card" style="margin-bottom: 1.25rem" data-dash-for="process">
-          <h2>Recent recipe costing</h2>
-          <p class="muted">Latest 25 entries from the kitchen / process login.</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Login ID</th>
-                  <th>Recipe</th>
-                  <th>Category</th>
-                  <th>Portions</th>
-                  <th>Total $</th>
-                  <th>$/portion</th>
-                  <th>Timestamp</th>
-                </tr>
-              </thead>
-              <tbody id="dash-process-body"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card dash-table-card" data-dash-for="reminders">
-          <h2>Upcoming reminders</h2>
-          <p class="muted">Next 20 by date (from reminders login).</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Login ID</th>
-                  <th>Title</th>
-                  <th>When</th>
-                  <th>Status</th>
-                  <th>Notes</th>
-                </tr>
-              </thead>
-              <tbody id="dash-reminders-body"></tbody>
-            </table>
-          </div>
-        </div>
-        <div class="card dash-table-card" data-dash-for="calendar">
-          <h2>Calendar tasks</h2>
-          <p class="muted">Tasks by day from the Calendar login (in date range, up to 40 rows).</p>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Login ID</th>
-                  <th>Task</th>
-                  <th>Done</th>
-                </tr>
-              </thead>
-              <tbody id="dash-calendar-body"></tbody>
-            </table>
-          </div>
-        </div>
-        </div>
-      </main>
-    </div>
-
-    <!-- Reminders login -->
-    <div id="view-reminders" hidden>
-      <header class="header">
-        <div>
-          <h1 class="logo">Reminders</h1>
-          <span class="role-badge">Reminders login</span>
-        </div>
-        <div class="header-actions">
-          <button type="button" class="btn ghost" id="reminders-btn-back-form" hidden>Back to form</button>
-          <button type="button" class="btn ghost btn-with-badge" id="reminders-btn-assigned-work">
-            Assigned work
-            <span id="reminders-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
-          </button>
-          <button type="button" class="btn ghost" id="reminders-btn-view-history">View history</button>
-          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
-          <button type="button" class="btn ghost" data-logout>Log out</button>
-        </div>
-      </header>
-      <main>
-        <div id="reminders-panel-form">
-        <div class="card" style="margin-bottom: 1.25rem">
-          <h2>Add or edit reminder</h2>
-          <p class="muted">
-            Set a title, when it should trigger, and optional notes. Reminders are stored with your portal data. Use <strong>View history</strong> to see all reminders; only the one you added most recently can be edited.
-          </p>
-          <form id="reminder-form" class="form" style="margin-top: 1rem" novalidate>
-            <label class="field">
-              <span class="field-label">Title</span>
-              <input type="text" id="reminder-title" name="title" required maxlength="200" autocomplete="off" />
-            </label>
-            <label class="field">
-              <span class="field-label">Date &amp; time</span>
-              <input type="datetime-local" id="reminder-due" name="due" required />
-            </label>
-            <label class="field">
-              <span class="field-label">Notes (optional)</span>
-              <textarea id="reminder-notes" name="notes" rows="3" maxlength="2000" placeholder="Details, location, etc."></textarea>
-            </label>
-            <div class="portal-form-actions">
-              <button type="submit" class="btn primary" id="reminder-submit-btn">Save reminder</button>
-              <button type="button" class="btn ghost" id="reminder-cancel-edit" hidden>Cancel edit</button>
-            </div>
-          </form>
-        </div>
-        </div>
-        <div id="reminders-panel-history" hidden>
-        <div class="card">
-          <h2>History</h2>
-          <p class="muted">Sorted by due date. Older reminders are read only. Remove items when done.</p>
-          <div id="reminders-list" class="reminder-list" style="margin-top: 1rem"></div>
-        </div>
-        </div>
-        <div id="reminders-panel-assigned" hidden>
-          <div id="reminders-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
-        </div>
-      </main>
-    </div>
-
-    <!-- Calendar login: month grid + daily tasks -->
-    <div id="view-calendar" hidden>
-      <header class="header">
-        <div>
-          <h1 class="logo">Calendar</h1>
-          <span class="role-badge">Tasks by day</span>
-        </div>
-        <div class="header-actions">
-          <button type="button" class="btn ghost" id="calendar-btn-back-main" hidden>Back to calendar</button>
-          <button type="button" class="btn ghost btn-with-badge" id="calendar-btn-assigned-work">
-            Assigned work
-            <span id="calendar-assigned-work-badge" class="nav-badge" hidden aria-hidden="true">0</span>
-          </button>
-          <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
-          <button type="button" class="btn ghost" data-logout>Log out</button>
-        </div>
-      </header>
-      <main>
-        <div id="calendar-panel-assigned" hidden>
-          <div id="calendar-assigned-work" class="assigned-work-inner-mount" aria-live="polite"></div>
-        </div>
-        <div id="calendar-panel-main">
-        <div class="card calendar-month-card">
-          <div class="calendar-toolbar">
-            <button type="button" class="btn ghost" id="calendar-prev-month" aria-label="Previous month">←</button>
-            <h2 class="calendar-month-title" id="calendar-month-label">—</h2>
-            <button type="button" class="btn ghost" id="calendar-next-month" aria-label="Next month">→</button>
-          </div>
-          <div class="calendar-weekdays" aria-hidden="true">
-            <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
-          </div>
-          <div id="calendar-grid" class="calendar-grid" role="grid" aria-label="Month calendar"></div>
-        </div>
-        <div class="card" style="margin-top: 1.25rem">
-          <h2 id="calendar-day-heading">Tasks</h2>
-          <div id="calendar-task-list" class="calendar-task-list"></div>
-          <div class="calendar-add-row">
-            <label class="field" style="margin: 0; flex: 1; min-width: 200px">
-              <span class="field-label">New task for the selected day</span>
-              <input type="text" id="calendar-new-task" maxlength="200" autocomplete="off" placeholder="e.g. Submit report" />
-            </label>
-            <button type="button" class="btn primary" id="calendar-add-task-btn">Add task</button>
           </div>
         </div>
         </div>
@@ -968,20 +622,11 @@
             <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="survey" aria-selected="false">
               Survey
             </button>
-            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="process" aria-selected="false">
-              Kitchen / process
-            </button>
             <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="dashboard" aria-selected="false">
               Dashboard
             </button>
             <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="supervisor" aria-selected="false">
               Supervisor
-            </button>
-            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="reminders" aria-selected="false">
-              Reminders
-            </button>
-            <button type="button" class="nav-btn admin-cred-tab" role="tab" data-admin-cred-tab="calendar" aria-selected="false">
-              Calendar
             </button>
           </div>
           <form id="admin-credentials-form" class="admin-cred-panels-wrap" style="margin-top: 1rem" novalidate>
@@ -1003,17 +648,6 @@
                 <button type="button" class="btn ghost admin-add-cred" data-add-cred="survey">Add login</button>
               </div>
             </div>
-            <div class="admin-cred-panel" data-admin-cred-panel="process" hidden>
-              <div class="admin-block">
-                <h3>Kitchen / recipes (process)</h3>
-                <p class="muted" style="margin-top: 0">
-                  Restaurant recipe costing, ingredients, labor, and prep notes. Shown on the dashboard under
-                  <strong>Kitchen / recipes</strong>.
-                </p>
-                <div id="admin-accounts-process" class="admin-accounts" data-role="process"></div>
-                <button type="button" class="btn ghost admin-add-cred" data-add-cred="process">Add login</button>
-              </div>
-            </div>
             <div class="admin-cred-panel" data-admin-cred-panel="dashboard" hidden>
               <div class="admin-block">
                 <h3>Dashboard</h3>
@@ -1029,20 +663,6 @@
                 </p>
                 <div id="admin-accounts-supervisor" class="admin-accounts" data-role="supervisor"></div>
                 <button type="button" class="btn ghost admin-add-cred" data-add-cred="supervisor">Add login</button>
-              </div>
-            </div>
-            <div class="admin-cred-panel" data-admin-cred-panel="reminders" hidden>
-              <div class="admin-block">
-                <h3>Reminders</h3>
-                <div id="admin-accounts-reminders" class="admin-accounts" data-role="reminders"></div>
-                <button type="button" class="btn ghost admin-add-cred" data-add-cred="reminders">Add login</button>
-              </div>
-            </div>
-            <div class="admin-cred-panel" data-admin-cred-panel="calendar" hidden>
-              <div class="admin-block">
-                <h3>Calendar</h3>
-                <div id="admin-accounts-calendar" class="admin-accounts" data-role="calendar"></div>
-                <button type="button" class="btn ghost admin-add-cred" data-add-cred="calendar">Add login</button>
               </div>
             </div>
             <button type="button" class="btn primary admin-save-cred-tab" id="admin-save-cred-tab" style="margin-top: 1.25rem">

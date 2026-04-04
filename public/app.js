@@ -16,51 +16,17 @@
     return b ? b + p : p;
   }
 
-  const ROLE_KEYS = ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"];
+  const ROLE_KEYS = ["field", "survey", "dashboard", "supervisor"];
 
   const ROLE_LABELS = {
     field: "Work report (field)",
     survey: "Employee survey",
-    process: "Kitchen / recipes (process)",
     dashboard: "Dashboard",
     supervisor: "Supervisor",
-    reminders: "Reminders",
-    calendar: "Calendar",
     admin: "Administration",
   };
 
-  const ROLE_PICKER_ORDER = ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", "admin"];
-
-  const PROCESS_CATEGORY_LABELS = {
-    appetizer: "Appetizer",
-    main: "Main course",
-    side: "Side",
-    dessert: "Dessert",
-    beverage: "Beverage",
-    other: "Other",
-  };
-
-  const PROCESS_INGREDIENT_UNITS = [
-    { value: "g", label: "g" },
-    { value: "kg", label: "kg" },
-    { value: "ml", label: "ml" },
-    { value: "l", label: "L" },
-    { value: "pcs", label: "pcs" },
-    { value: "tbsp", label: "tbsp" },
-    { value: "tsp", label: "tsp" },
-    { value: "cup", label: "cup" },
-    { value: "oz", label: "oz" },
-    { value: "lb", label: "lb" },
-    { value: "portion", label: "portion" },
-    { value: "pinch", label: "pinch (approx.)" },
-    { value: "other", label: "other" },
-    { value: "legacy", label: "Legacy line" },
-  ];
-
-  function formatProcessDishCategory(cat) {
-    if (!cat) return "—";
-    return PROCESS_CATEGORY_LABELS[cat] || String(cat);
-  }
+  const ROLE_PICKER_ORDER = ["field", "survey", "dashboard", "supervisor", "admin"];
 
   function portalRoleKey(portalId) {
     return "cp_" + portalId;
@@ -112,18 +78,12 @@
         { username: "xyz", password: "xyz123" },
       ],
       survey: [{ username: "survey", password: "survey123" }],
-      process: [{ username: "process", password: "process123" }],
       dashboard: [{ username: "manager", password: "manager123" }],
       supervisor: [{ username: "supervisor", password: "supervisor123" }],
-      reminders: [{ username: "remind", password: "remind123" }],
-      calendar: [{ username: "calender", password: "calender2026" }],
       admin: { username: "admin", password: "admin123" },
     },
     fieldEntries: [],
     surveyEntries: [],
-    processEntries: [],
-    reminders: [],
-    calendarTasks: [],
     customPortals: [],
     customPortalEntries: {},
     workAssignments: [],
@@ -180,7 +140,8 @@
     const instructions = raw.instructions != null ? String(raw.instructions).trim() : "";
     if (!targetUsername || !instructions) return null;
     let scope = raw.scope != null ? String(raw.scope).trim() : "all";
-    const core = new Set(["all", "field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar"]);
+    if (["process", "reminders", "calendar"].includes(scope)) scope = "all";
+    const core = new Set(["all", "field", "survey", "dashboard", "supervisor"]);
     if (!core.has(scope) && !(typeof scope === "string" && scope.startsWith("cp_"))) scope = "all";
     const at = raw.assignedAt ? new Date(raw.assignedAt).getTime() : NaN;
     const assignedAt = !Number.isNaN(at) ? new Date(at).toISOString() : new Date().toISOString();
@@ -313,25 +274,6 @@
       Object.keys(rawEntries).forEach((k) => {
         if (Array.isArray(rawEntries[k])) customPortalEntries[k] = rawEntries[k];
       });
-      const rawCalTasks = Array.isArray(parsed.calendarTasks) ? parsed.calendarTasks : [];
-      const calendarTasks = rawCalTasks
-        .map((t) => {
-          if (!t || typeof t !== "object") return null;
-          const dateYmd =
-            t.dateYmd != null
-              ? String(t.dateYmd).slice(0, 10)
-              : t.date != null
-                ? String(t.date).slice(0, 10)
-                : "";
-          return {
-            id: t.id ? String(t.id) : entryId(),
-            dateYmd,
-            title: t.title != null ? String(t.title).trim() : "",
-            done: !!(t && t.done),
-            submittedBy: t.submittedBy != null ? String(t.submittedBy).trim() : "",
-          };
-        })
-        .filter((t) => t && t.dateYmd && /^\d{4}-\d{2}-\d{2}$/.test(t.dateYmd));
       const rawWa = Array.isArray(parsed.workAssignments) ? parsed.workAssignments : [];
       const workAssignments = rawWa.map(normalizeWorkAssignment).filter(Boolean);
       const next = {
@@ -340,21 +282,22 @@
         credentials: {
           field: normalizeRoleCredentialList(pc.field, base.credentials.field),
           survey: normalizeRoleCredentialList(pc.survey, base.credentials.survey),
-          process: normalizeRoleCredentialList(pc.process, base.credentials.process),
           dashboard: normalizeRoleCredentialList(pc.dashboard, base.credentials.dashboard),
           supervisor: normalizeRoleCredentialList(pc.supervisor, base.credentials.supervisor),
-          reminders: normalizeRoleCredentialList(pc.reminders, base.credentials.reminders),
-          calendar: normalizeRoleCredentialList(pc.calendar, base.credentials.calendar),
           admin: adminCred,
         },
-        reminders: Array.isArray(parsed.reminders) ? parsed.reminders : base.reminders,
-        calendarTasks,
         workAssignments,
         customPortals,
         customPortalEntries,
       };
       delete next.customPortalFollowUpNotified;
       delete next.emailSettings;
+      delete next.processEntries;
+      delete next.reminders;
+      delete next.calendarTasks;
+      delete next.credentials.process;
+      delete next.credentials.reminders;
+      delete next.credentials.calendar;
       return next;
     } catch {
       return defaultState();
@@ -534,7 +477,7 @@
   function runAllDataMigrations() {
     (function migrateDashboardEntryTimes() {
       let dirty = false;
-      ["fieldEntries", "surveyEntries", "processEntries"].forEach((key) => {
+      ["fieldEntries", "surveyEntries"].forEach((key) => {
         const arr = state[key];
         if (!Array.isArray(arr)) return;
         arr.forEach((entry) => {
@@ -582,12 +525,6 @@
           dirty = true;
         }
       });
-      (state.processEntries || []).forEach((e) => {
-        if (!e.id) {
-          e.id = entryId();
-          dirty = true;
-        }
-      });
       const ce = state.customPortalEntries;
       if (ce && typeof ce === "object") {
         Object.keys(ce).forEach((pid) => {
@@ -599,12 +536,6 @@
           });
         });
       }
-      (state.reminders || []).forEach((r) => {
-        if (!r.createdAt) {
-          r.createdAt = r.due || new Date().toISOString();
-          dirty = true;
-        }
-      });
       if (dirty) saveState(state);
     })();
 
@@ -672,8 +603,6 @@
   let customPortalImageObjectUrlByField = {};
   let fieldEditEntryId = null;
   let surveyEditEntryId = null;
-  let processEditEntryId = null;
-  let reminderEditEntryId = null;
   let customPortalEditPortalId = null;
   let customPortalEditEntryId = null;
   let adminCredActiveRole = "field";
@@ -690,9 +619,6 @@
   let dashboardChartList = [];
   let dashboardAppliedDateFrom = "";
   let dashboardAppliedDateTo = "";
-  let calendarDisplayYear = new Date().getFullYear();
-  let calendarDisplayMonth = new Date().getMonth();
-  let calendarSelectedYmd = "";
   /** Manager “All assignments” table: "active" | "completed" */
   let managerAssignmentsFilter = "active";
 
@@ -724,10 +650,6 @@
     if (isDashboardManagerRole()) {
       // Manager / supervisor view also includes the assignments table.
       renderManagerAssignmentsTable();
-    }
-    if (sessionRole === "process") {
-      renderProcessDishLibrary();
-      renderProcessHistory();
     }
   }
 
@@ -765,11 +687,8 @@
     rolePicker: $("#view-role-picker"),
     field: $("#view-field"),
     survey: $("#view-survey"),
-    process: $("#view-process"),
     customPortal: $("#view-custom-portal"),
     dashboard: $("#view-dashboard"),
-    reminders: $("#view-reminders"),
-    calendar: $("#view-calendar"),
     admin: $("#view-admin"),
   };
 
@@ -779,7 +698,7 @@
 
   function getRolePickerOrder() {
     const mids = getCustomPortalsList().map((p) => portalRoleKey(p.id));
-    return ["field", "survey", "process", "dashboard", "supervisor", "reminders", "calendar", ...mids, "admin"];
+    return ["field", "survey", "dashboard", "supervisor", ...mids, "admin"];
   }
 
   function getRoleLabel(role) {
@@ -1084,7 +1003,7 @@
       el.hidden = key !== name;
     });
     const app = $(".app");
-    if (name === "dashboard" || name === "admin" || name === "reminders" || name === "calendar") {
+    if (name === "dashboard" || name === "admin") {
       app.classList.add("layout-wide");
     } else {
       app.classList.remove("layout-wide");
@@ -1096,11 +1015,8 @@
     const m = {
       field: "field",
       survey: "survey",
-      process: "process",
       dashboard: "dashboard",
       supervisor: "dashboard",
-      reminders: "reminders",
-      calendar: "calendar",
       admin: "admin",
     };
     return m[role] || "login";
@@ -1151,47 +1067,6 @@
     if (btnB) btnB.hidden = isForm;
     if (isHist) renderSurveyHistory();
     if (isAssign) renderAssigneeWorkMount("survey-assigned-work", "survey");
-  }
-
-  function setProcessPortalSubView(mode) {
-    const formP = $("#process-panel-form");
-    const histP = $("#process-panel-history");
-    const assignP = $("#process-panel-assigned");
-    const btnV = $("#process-btn-view-history");
-    const btnA = $("#process-btn-assigned-work");
-    const btnB = $("#process-btn-back-form");
-    const isForm = mode === "form";
-    const isHist = mode === "history";
-    const isAssign = mode === "assigned";
-    if (formP) formP.hidden = !isForm;
-    if (histP) histP.hidden = !isHist;
-    if (assignP) assignP.hidden = !isAssign;
-    if (btnV) btnV.hidden = !isForm;
-    if (btnA) btnA.hidden = !isForm;
-    if (btnB) btnB.hidden = isForm;
-    if (isHist) renderProcessHistory();
-    if (isAssign) renderAssigneeWorkMount("process-assigned-work", "process");
-    if (isForm) renderProcessDishLibrary();
-  }
-
-  function setRemindersPortalSubView(mode) {
-    const formP = $("#reminders-panel-form");
-    const histP = $("#reminders-panel-history");
-    const assignP = $("#reminders-panel-assigned");
-    const btnV = $("#reminders-btn-view-history");
-    const btnA = $("#reminders-btn-assigned-work");
-    const btnB = $("#reminders-btn-back-form");
-    const isForm = mode === "form";
-    const isHist = mode === "history";
-    const isAssign = mode === "assigned";
-    if (formP) formP.hidden = !isForm;
-    if (histP) histP.hidden = !isHist;
-    if (assignP) assignP.hidden = !isAssign;
-    if (btnV) btnV.hidden = !isForm;
-    if (btnA) btnA.hidden = !isForm;
-    if (btnB) btnB.hidden = isForm;
-    if (isHist) renderRemindersView();
-    if (isAssign) renderAssigneeWorkMount("reminders-assigned-work", "reminders");
   }
 
   function isCustomPortalNextEntryDue(portal) {
@@ -1273,19 +1148,6 @@
     }
   }
 
-  function setCalendarPortalSubView(mode) {
-    const main = $("#calendar-panel-main");
-    const assign = $("#calendar-panel-assigned");
-    const btnBack = $("#calendar-btn-back-main");
-    const btnAw = $("#calendar-btn-assigned-work");
-    const isMain = mode === "main";
-    if (main) main.hidden = !isMain;
-    if (assign) assign.hidden = isMain;
-    if (btnBack) btnBack.hidden = isMain;
-    if (btnAw) btnAw.hidden = !isMain;
-    if (!isMain) renderAssigneeWorkMount("calendar-assigned-work", "calendar");
-  }
-
   function enterPortal(role) {
     stopCamera();
     stopCustomPortalCamera();
@@ -1300,11 +1162,6 @@
       clearSurveyEditMode();
       setSurveyPortalSubView("form");
       startTsTick("#survey-timestamp");
-    } else if (role === "process") {
-      showView("process");
-      clearProcessEditMode();
-      setProcessPortalSubView("form");
-      startTsTick("#process-timestamp");
     } else if (role === "dashboard" || role === "supervisor") {
       stopTsTick();
       dashboardFilter = "all";
@@ -1324,23 +1181,6 @@
       setDashboardManagerSection("analytics");
       renderManagerAssignWorkUI();
       renderAssigneeWorkMount("dashboard-assigned-work", role, true);
-    } else if (role === "reminders") {
-      stopTsTick();
-      showView("reminders");
-      clearReminderEditMode();
-      setRemindersPortalSubView("form");
-    } else if (role === "calendar") {
-      stopTsTick();
-      showView("calendar");
-      if (!calendarSelectedYmd) calendarSelectedYmd = localCalendarYmd(new Date());
-      const anchor = startOfDayYmd(calendarSelectedYmd);
-      if (anchor && !Number.isNaN(anchor.getTime())) {
-        calendarDisplayYear = anchor.getFullYear();
-        calendarDisplayMonth = anchor.getMonth();
-      }
-      renderCalendarMonth();
-      renderCalendarDayTasks();
-      setCalendarPortalSubView("main");
     } else {
       const cpId = parsePortalIdFromRole(role);
       if (cpId) {
@@ -1383,7 +1223,7 @@
       /* assign work UI + mount handled in dashboard branch */
     } else if (typeof role === "string" && role.startsWith("cp_")) {
       renderAssigneeWorkMount("custom-portal-assigned-work", role);
-    } else if (["field", "survey", "process", "reminders", "calendar"].includes(role)) {
+    } else if (role === "field" || role === "survey") {
       renderAssigneeWorkMount(`${role}-assigned-work`, role);
     }
     updateSwitchPortalButtons();
@@ -1664,9 +1504,7 @@
     destroyDashboardCharts();
     dashboardAppliedDateFrom = "";
     dashboardAppliedDateTo = "";
-    calendarSelectedYmd = "";
     setDashboardManagerSection("analytics");
-    setCalendarPortalSubView("main");
     const df = $("#dash-date-from");
     const dt = $("#dash-date-to");
     const pf = $("#dash-date-from-picker");
@@ -1689,8 +1527,6 @@
     setError("#login-error", "");
     fieldEditEntryId = null;
     surveyEditEntryId = null;
-    processEditEntryId = null;
-    reminderEditEntryId = null;
     customPortalEditEntryId = null;
     customPortalEditPortalId = null;
   }
@@ -1751,35 +1587,6 @@
     return list.filter((e) => instantInDateRange(getEntrySubmittedTime(e), fromStr, toStr));
   }
 
-  function filterProcessByDateRange(list, fromStr, toStr) {
-    if (!fromStr && !toStr) return list.slice();
-    return list.filter((e) => instantInDateRange(getEntrySubmittedTime(e), fromStr, toStr));
-  }
-
-  function filterRemindersByDueRange(list, fromStr, toStr) {
-    if (!fromStr && !toStr) return list.slice();
-    return list.filter((r) => {
-      const t = new Date(r.due);
-      return instantInDateRange(t, fromStr, toStr);
-    });
-  }
-
-  function filterCustomPortalEntriesByDate(list, fromStr, toStr) {
-    if (!fromStr && !toStr) return (list || []).slice();
-    return (list || []).filter((e) => instantInDateRange(getEntrySubmittedTime(e), fromStr, toStr));
-  }
-
-  function filterCalendarTasksByDateRange(list, fromStr, toStr) {
-    if (!fromStr && !toStr) return (list || []).slice();
-    return (list || []).filter((t) => {
-      const ymd = t && t.dateYmd;
-      if (!ymd || typeof ymd !== "string") return false;
-      if (fromStr && ymd < fromStr) return false;
-      if (toStr && ymd > toStr) return false;
-      return true;
-    });
-  }
-
   function getDashboardFilteredDatasets() {
     const fromStr = dashboardAppliedDateFrom;
     const toStr = dashboardAppliedDateTo;
@@ -1791,141 +1598,8 @@
     return {
       field: filterFieldByDateRange(state.fieldEntries || [], fromStr, toStr),
       survey: filterSurveyByDateRange(state.surveyEntries || [], fromStr, toStr),
-      process: filterProcessByDateRange(state.processEntries || [], fromStr, toStr),
-      reminders: filterRemindersByDueRange(state.reminders || [], fromStr, toStr),
-      calendar: filterCalendarTasksByDateRange(state.calendarTasks || [], fromStr, toStr),
       custom,
     };
-  }
-
-  function renderCalendarMonth() {
-    const grid = $("#calendar-grid");
-    const label = $("#calendar-month-label");
-    if (!grid) return;
-    if (label) {
-      label.textContent = new Date(calendarDisplayYear, calendarDisplayMonth, 1).toLocaleString(
-        undefined,
-        { month: "long", year: "numeric" }
-      );
-    }
-    const todayYmd = localCalendarYmd(new Date());
-    const first = new Date(calendarDisplayYear, calendarDisplayMonth, 1);
-    const startPad = first.getDay();
-    const dim = new Date(calendarDisplayYear, calendarDisplayMonth + 1, 0).getDate();
-    grid.innerHTML = "";
-    const y = calendarDisplayYear;
-    const m = calendarDisplayMonth + 1;
-    const mpad = String(m).padStart(2, "0");
-    const tasks = state.calendarTasks || [];
-
-    function appendPadCells(n) {
-      for (let i = 0; i < n; i++) {
-        const d = document.createElement("div");
-        d.className = "calendar-day-pad";
-        d.setAttribute("aria-hidden", "true");
-        grid.appendChild(d);
-      }
-    }
-
-    appendPadCells(startPad);
-    for (let day = 1; day <= dim; day++) {
-      const dp = String(day).padStart(2, "0");
-      const ymd = `${y}-${mpad}-${dp}`;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "calendar-day-cell";
-      btn.setAttribute("data-ymd", ymd);
-      btn.setAttribute("role", "gridcell");
-      if (ymd === todayYmd) btn.classList.add("is-today");
-      if (ymd === calendarSelectedYmd) btn.classList.add("is-selected");
-      const num = document.createElement("span");
-      num.className = "calendar-day-num";
-      num.textContent = String(day);
-      btn.appendChild(num);
-      const nTasks = tasks.filter((t) => t.dateYmd === ymd).length;
-      if (nTasks > 0) {
-        const badge = document.createElement("span");
-        badge.className = "calendar-day-badge";
-        badge.textContent = String(nTasks);
-        btn.appendChild(badge);
-      }
-      grid.appendChild(btn);
-    }
-    const totalCells = startPad + dim;
-    const endPad = (7 - (totalCells % 7)) % 7;
-    appendPadCells(endPad);
-  }
-
-  function renderCalendarDayTasks() {
-    const heading = $("#calendar-day-heading");
-    const listEl = $("#calendar-task-list");
-    if (!heading || !listEl) return;
-    const pretty = formatYmdToDdMmYyyy(calendarSelectedYmd);
-    heading.textContent = pretty ? `Tasks — ${pretty}` : "Tasks";
-    listEl.innerHTML = "";
-    const tasks = (state.calendarTasks || [])
-      .filter((t) => t.dateYmd === calendarSelectedYmd)
-      .slice()
-      .sort((a, b) => (a.title || "").localeCompare(b.title || ""));
-    if (tasks.length === 0) {
-      const p = document.createElement("p");
-      p.className = "muted";
-      p.textContent = "No tasks for this day. Add one below.";
-      listEl.appendChild(p);
-      return;
-    }
-    tasks.forEach((t) => {
-      const row = document.createElement("div");
-      row.className = "calendar-task-row";
-      row.dataset.taskId = t.id;
-      const lab = document.createElement("label");
-      lab.className = "calendar-task-label";
-      const cb = document.createElement("input");
-      cb.type = "checkbox";
-      cb.checked = !!t.done;
-      cb.setAttribute("data-task-id", t.id);
-      const span = document.createElement("span");
-      span.textContent = t.title || "(Untitled)";
-      if (t.done) span.classList.add("calendar-task-title-done");
-      lab.appendChild(cb);
-      lab.appendChild(span);
-      row.appendChild(lab);
-      listEl.appendChild(row);
-    });
-  }
-
-  function commitAddCalendarTask() {
-    const inp = $("#calendar-new-task");
-    if (!inp || !calendarSelectedYmd) return;
-    const title = (inp.value || "").trim();
-    if (!title) {
-      alert("Enter a task description.");
-      return;
-    }
-    if (!Array.isArray(state.calendarTasks)) state.calendarTasks = [];
-    state.calendarTasks.push({
-      id: entryId(),
-      dateYmd: calendarSelectedYmd,
-      title,
-      done: false,
-      submittedBy: entrySubmittedBy(),
-    });
-    saveState(state);
-    inp.value = "";
-    renderCalendarMonth();
-    renderCalendarDayTasks();
-    renderDashboard();
-  }
-
-  function setCalendarTaskDone(taskId, done) {
-    const list = state.calendarTasks || [];
-    const t = list.find((x) => x.id === taskId);
-    if (!t) return;
-    t.done = !!done;
-    saveState(state);
-    renderCalendarMonth();
-    renderCalendarDayTasks();
-    renderDashboard();
   }
 
   function formatAssignmentScopeLabel(scope) {
@@ -1973,9 +1647,6 @@
     const pairs = [
       ["field-assigned-work-badge", "field"],
       ["survey-assigned-work-badge", "survey"],
-      ["process-assigned-work-badge", "process"],
-      ["reminders-assigned-work-badge", "reminders"],
-      ["calendar-assigned-work-badge", "calendar"],
     ];
     pairs.forEach(([bid, scope]) => {
       const el = document.getElementById(bid);
@@ -2078,11 +1749,8 @@
     addOpt("all", "All portals");
     addOpt("field", "Work report (field)");
     addOpt("survey", "Employee survey");
-    addOpt("process", "Kitchen / recipes (process)");
     addOpt("dashboard", "Dashboard");
     addOpt("supervisor", "Supervisor");
-    addOpt("reminders", "Reminders");
-    addOpt("calendar", "Calendar");
     getCustomPortalsList().forEach((p) => {
       addOpt(portalRoleKey(p.id), `${p.title} (custom portal)`);
     });
@@ -2373,9 +2041,6 @@
   function refreshAllAssigneeWorkMounts() {
     renderAssigneeWorkMount("field-assigned-work", "field");
     renderAssigneeWorkMount("survey-assigned-work", "survey");
-    renderAssigneeWorkMount("process-assigned-work", "process");
-    renderAssigneeWorkMount("reminders-assigned-work", "reminders");
-    renderAssigneeWorkMount("calendar-assigned-work", "calendar");
     const dashScope =
       sessionRole === "dashboard" || sessionRole === "supervisor" ? sessionRole : "dashboard";
     renderAssigneeWorkMount("dashboard-assigned-work", dashScope, true);
@@ -2585,7 +2250,7 @@
     });
   }
 
-  function renderDashboardCharts(field, survey, process, rem, customByPortal, calTasks) {
+  function renderDashboardCharts(field, survey, customByPortal) {
     destroyDashboardCharts();
     const ChartCtor = typeof Chart !== "undefined" ? Chart : null;
     if (!ChartCtor) return;
@@ -2598,17 +2263,14 @@
       grid: { color: "rgba(61, 46, 34, 0.12)" },
     };
 
-    const cal = calTasks || [];
-    const proc = process || [];
-
     if (filter === "all") {
       const el = document.getElementById("chart-portal-volume");
       if (el) {
         const portals = getCustomPortalsList();
-        const labels = ["Work report", "Survey", "Kitchen / recipes", "Reminders", "Calendar tasks"];
-        const data = [field.length, survey.length, proc.length, rem.length, cal.length];
-        const bg = [colors[0], colors[1], colors[2], colors[3], colors[5]];
-        let ci = 6;
+        const labels = ["Work report", "Survey"];
+        const data = [field.length, survey.length];
+        const bg = [colors[0], colors[1]];
+        let ci = 2;
         portals.forEach((p) => {
           const short = p.title.length > 18 ? p.title.slice(0, 16) + "…" : p.title;
           labels.push(short);
@@ -2732,126 +2394,10 @@
         );
       }
     }
-
-    if (filter === "all" || filter === "process") {
-      const counts = {};
-      proc.forEach((e) => {
-        const k = e.dishCategory || "other";
-        counts[k] = (counts[k] || 0) + 1;
-      });
-      const keys = Object.keys(counts);
-      const el = document.getElementById("chart-process-category");
-      if (el && keys.length > 0) {
-        dashboardChartList.push(
-          new ChartCtor(el, {
-            type: "bar",
-            data: {
-              labels: keys.map((k) => PROCESS_CATEGORY_LABELS[k] || k),
-              datasets: [
-                {
-                  label: "Recipes",
-                  data: keys.map((k) => counts[k]),
-                  backgroundColor: keys.map((_, i) => colors[i % colors.length]),
-                  borderWidth: 0,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { ...chartCommonText(), legend: { display: false } },
-              scales: {
-                x: scaleOpts,
-                y: { ...scaleOpts, beginAtZero: true },
-              },
-            },
-          })
-        );
-      } else if (el) {
-        dashboardChartList.push(
-          new ChartCtor(el, {
-            type: "bar",
-            data: { labels: ["No data yet"], datasets: [{ data: [0], backgroundColor: colors[4] }] },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { ...chartCommonText(), legend: { display: false } },
-              scales: { x: scaleOpts, y: { ...scaleOpts, beginAtZero: true } },
-            },
-          })
-        );
-      }
-    }
-
-    if (filter === "all" || filter === "reminders") {
-      const now = Date.now();
-      let scheduled = 0;
-      let soon = 0;
-      let past = 0;
-      rem.forEach((r) => {
-        const t = new Date(r.due).getTime();
-        if (t < now) past += 1;
-        else if (t - now < 864e5) soon += 1;
-        else scheduled += 1;
-      });
-      const el = document.getElementById("chart-reminder-status");
-      if (el) {
-        dashboardChartList.push(
-          new ChartCtor(el, {
-            type: "pie",
-            data: {
-              labels: ["Scheduled", "Due soon (24h)", "Past due"],
-              datasets: [
-                {
-                  data: [scheduled, soon, past],
-                  backgroundColor: [colors[0], colors[2], "#f87171"],
-                  borderColor: "#ffffff",
-                  borderWidth: 2,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { ...chartCommonText(), legend: { position: "bottom" } },
-            },
-          })
-        );
-      }
-    }
-
-    if (filter === "all" || filter === "calendar") {
-      const doneN = cal.filter((t) => t.done).length;
-      const openN = cal.length - doneN;
-      const el = document.getElementById("chart-calendar-done");
-      if (el) {
-        dashboardChartList.push(
-          new ChartCtor(el, {
-            type: "doughnut",
-            data: {
-              labels: ["Done", "Open"],
-              datasets: [
-                {
-                  data: [doneN, openN],
-                  backgroundColor: [colors[3], colors[4]],
-                  borderColor: "#ffffff",
-                  borderWidth: 2,
-                },
-              ],
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { ...chartCommonText(), legend: { position: "bottom" } },
-            },
-          })
-        );
-      }
-    }
   }
 
   function renderDashboard() {
-    const { field, survey, process, reminders: rem, calendar: cal, custom } = getDashboardFilteredDatasets();
+    const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     const cpFilterId = parsePortalIdFromRole(dashboardFilter);
     if (cpFilterId && !getCustomPortalsList().some((p) => p.id === cpFilterId)) {
@@ -2860,138 +2406,63 @@
     syncDashboardCustomStats(custom);
     syncDashboardCustomPanels(custom);
 
-    $("#stat-field-count").textContent = String(field.length);
-    $("#stat-survey-count").textContent = String(survey.length);
-    const statProc = $("#stat-process-count");
-    if (statProc) statProc.textContent = String(process.length);
+    const statField = $("#stat-field-count");
+    if (statField) statField.textContent = String(field.length);
+    const statSurvey = $("#stat-survey-count");
+    if (statSurvey) statSurvey.textContent = String(survey.length);
     const workYes = field.filter((e) => e.workDone === "yes").length;
-    $("#stat-work-yes").textContent = String(workYes);
-    $("#stat-reminders-count").textContent = String(rem.length);
-    const statCal = $("#stat-calendar-count");
-    if (statCal) statCal.textContent = String(cal.length);
+    const statWorkYes = $("#stat-work-yes");
+    if (statWorkYes) statWorkYes.textContent = String(workYes);
 
     updateDashboardDateHint(dashboardAppliedDateFrom, dashboardAppliedDateTo);
 
-    const remBody = $("#dash-reminders-body");
-    if (remBody) {
-      remBody.innerHTML = "";
-      rem
-        .slice()
-        .sort((a, b) => new Date(a.due) - new Date(b.due))
-        .slice(0, 20)
-        .forEach((r) => {
-          const tr = document.createElement("tr");
-          const due = new Date(r.due);
-          const now = Date.now();
-          const status =
-            due.getTime() < now ? "Past due" : due.getTime() - now < 864e5 ? "Due soon" : "Scheduled";
-          tr.innerHTML = `
-            <td><small>${escapeHtml(formatDashboardLoginId(r))}</small></td>
-            <td>${escapeHtml(r.title)}</td>
-            <td><small>${escapeHtml(formatReminderWhen(due))}</small></td>
-            <td>${escapeHtml(status)}</td>
-            <td><small>${escapeHtml(r.notes || "—")}</small></td>
-          `;
-          remBody.appendChild(tr);
-        });
-    }
-
     const fieldBody = $("#dash-field-body");
-    fieldBody.innerHTML = "";
-    field
-      .slice()
-      .reverse()
-      .slice(0, 25)
-      .forEach((e) => {
-        const tr = document.createElement("tr");
-        const thumb = e.photoDataUrl
-          ? `<img class="thumb" src="${e.photoDataUrl}" alt="" />`
-          : "—";
-        tr.innerHTML = `
-          <td><small>${escapeHtml(formatDashboardLoginId(e))}</small></td>
-          <td>${escapeHtml(e.name)}</td>
-          <td>${escapeHtml(e.phone)}</td>
-          <td>${escapeHtml(e.workDone)}</td>
-          <td>${thumb}</td>
-          <td><small>${escapeHtml(e.timestamp)}</small></td>
-        `;
-        fieldBody.appendChild(tr);
-      });
-
-    const surveyBody = $("#dash-survey-body");
-    surveyBody.innerHTML = "";
-    survey
-      .slice()
-      .reverse()
-      .slice(0, 25)
-      .forEach((e) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-          <td><small>${escapeHtml(formatDashboardLoginId(e))}</small></td>
-          <td>${escapeHtml(String(e.employees))}</td>
-          <td>${escapeHtml(String(e.age))}</td>
-          <td>${escapeHtml(e.sex)}</td>
-          <td><small>${escapeHtml(e.timestamp)}</small></td>
-        `;
-        surveyBody.appendChild(tr);
-      });
-
-    const processBody = $("#dash-process-body");
-    if (processBody) {
-      processBody.innerHTML = "";
-      process
+    if (fieldBody) {
+      fieldBody.innerHTML = "";
+      field
         .slice()
         .reverse()
         .slice(0, 25)
         .forEach((e) => {
           const tr = document.createElement("tr");
-          const total =
-            e.totalRecipeCost != null && !Number.isNaN(Number(e.totalRecipeCost))
-              ? Number(e.totalRecipeCost).toFixed(2)
-              : "—";
-          const per =
-            e.costPerPortion != null && !Number.isNaN(Number(e.costPerPortion))
-              ? Number(e.costPerPortion).toFixed(4)
-              : "—";
+          const thumb = e.photoDataUrl
+            ? `<img class="thumb" src="${e.photoDataUrl}" alt="" />`
+            : "—";
           tr.innerHTML = `
             <td><small>${escapeHtml(formatDashboardLoginId(e))}</small></td>
-            <td>${escapeHtml(e.recipeName || "—")}</td>
-            <td>${escapeHtml(formatProcessDishCategory(e.dishCategory))}</td>
-            <td>${escapeHtml(String(e.numPortions ?? "—"))}</td>
-            <td>${escapeHtml(total)}</td>
-            <td>${escapeHtml(per)}</td>
-            <td><small>${escapeHtml(e.timestamp || "—")}</small></td>
+            <td>${escapeHtml(e.name)}</td>
+            <td>${escapeHtml(e.phone)}</td>
+            <td>${escapeHtml(e.workDone)}</td>
+            <td>${thumb}</td>
+            <td><small>${escapeHtml(e.timestamp)}</small></td>
           `;
-          processBody.appendChild(tr);
+          fieldBody.appendChild(tr);
         });
     }
 
-    const calBody = $("#dash-calendar-body");
-    if (calBody) {
-      calBody.innerHTML = "";
-      cal
+    const surveyBody = $("#dash-survey-body");
+    if (surveyBody) {
+      surveyBody.innerHTML = "";
+      survey
         .slice()
-        .sort((a, b) => {
-          const d = (a.dateYmd || "").localeCompare(b.dateYmd || "");
-          if (d !== 0) return d;
-          return (a.title || "").localeCompare(b.title || "");
-        })
-        .slice(0, 40)
-        .forEach((t) => {
+        .reverse()
+        .slice(0, 25)
+        .forEach((e) => {
           const tr = document.createElement("tr");
           tr.innerHTML = `
-            <td><small>${escapeHtml(formatYmdToDdMmYyyy(t.dateYmd) || t.dateYmd || "—")}</small></td>
-            <td><small>${escapeHtml(formatDashboardLoginId(t))}</small></td>
-            <td>${escapeHtml(t.title || "")}</td>
-            <td>${t.done ? "Yes" : "No"}</td>
+            <td><small>${escapeHtml(formatDashboardLoginId(e))}</small></td>
+            <td>${escapeHtml(String(e.employees))}</td>
+            <td>${escapeHtml(String(e.age))}</td>
+            <td>${escapeHtml(e.sex)}</td>
+            <td><small>${escapeHtml(e.timestamp)}</small></td>
           `;
-          calBody.appendChild(tr);
+          surveyBody.appendChild(tr);
         });
     }
 
     setDashboardTabsUI(dashboardFilter);
     setDashboardSectionVisibility(dashboardFilter);
-    renderDashboardCharts(field, survey, process, rem, custom, cal);
+    renderDashboardCharts(field, survey, custom);
     if (isDashboardManagerRole()) {
       renderAssigneeWorkMount("dashboard-assigned-work", sessionRole, true);
     }
@@ -3015,12 +2486,6 @@
     return list[list.length - 1];
   }
 
-  function getLatestProcessEntry() {
-    const list = state.processEntries || [];
-    if (!list.length) return null;
-    return list[list.length - 1];
-  }
-
   function getLatestCustomEntry(portalId) {
     const list = (state.customPortalEntries && state.customPortalEntries[portalId]) || [];
     if (!list.length) return null;
@@ -3035,23 +2500,6 @@
   function formatDashboardLoginId(entry) {
     const v = entry && entry.submittedBy != null ? String(entry.submittedBy).trim() : "";
     return v || "—";
-  }
-
-  function getLatestReminderByCreatedAt() {
-    const list = state.reminders || [];
-    if (!list.length) return null;
-    return list.reduce((a, b) => {
-      const ta = new Date(a.createdAt || 0).getTime();
-      const tb = new Date(b.createdAt || 0).getTime();
-      return tb >= ta ? b : a;
-    });
-  }
-
-  function isoToDatetimeLocalValue(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return "";
-    const pad = (n) => String(n).padStart(2, "0");
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
   function clearFieldEditMode() {
@@ -3222,398 +2670,6 @@
       }
       wrap.appendChild(row);
     });
-  }
-
-  function processIngredientUnitLabel(unit) {
-    const u = unit != null ? String(unit) : "";
-    const hit = PROCESS_INGREDIENT_UNITS.find((x) => x.value === u);
-    return hit ? hit.label : u || "—";
-  }
-
-  function buildProcessIngredientRowEl(data) {
-    const name = data && data.name != null ? String(data.name) : "";
-    const qty =
-      data && data.quantity != null && Number.isFinite(Number(data.quantity)) ? String(data.quantity) : "";
-    let unit = data && data.unit ? String(data.unit) : "g";
-    if (!PROCESS_INGREDIENT_UNITS.some((u) => u.value === unit)) unit = "g";
-
-    const row = document.createElement("div");
-    row.className = "process-ingredient-row";
-
-    const labName = document.createElement("label");
-    labName.className = "field process-ingredient-name";
-    const ln = document.createElement("span");
-    ln.className = "field-label";
-    ln.textContent = "Ingredient";
-    const inName = document.createElement("input");
-    inName.type = "text";
-    inName.className = "process-ingredient-name-input";
-    inName.maxLength = 300;
-    inName.placeholder = "e.g. Olive oil";
-    inName.autocomplete = "off";
-    inName.value = name;
-    labName.appendChild(ln);
-    labName.appendChild(inName);
-
-    const labQty = document.createElement("label");
-    labQty.className = "field process-ingredient-qty";
-    const lq = document.createElement("span");
-    lq.className = "field-label";
-    lq.textContent = "Quantity";
-    const inQty = document.createElement("input");
-    inQty.type = "number";
-    inQty.className = "process-ingredient-qty-input";
-    inQty.min = "0";
-    inQty.step = "any";
-    inQty.placeholder = "0";
-    inQty.value = qty;
-    labQty.appendChild(lq);
-    labQty.appendChild(inQty);
-
-    const labUnit = document.createElement("label");
-    labUnit.className = "field process-ingredient-unit";
-    const lu = document.createElement("span");
-    lu.className = "field-label";
-    lu.textContent = "Unit";
-    const sel = document.createElement("select");
-    sel.className = "process-ingredient-unit-select";
-    PROCESS_INGREDIENT_UNITS.forEach((u) => {
-      const o = document.createElement("option");
-      o.value = u.value;
-      o.textContent = u.label;
-      if (u.value === unit) o.selected = true;
-      sel.appendChild(o);
-    });
-    labUnit.appendChild(lu);
-    labUnit.appendChild(sel);
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "btn ghost process-ingredient-remove";
-    btn.setAttribute("aria-label", "Remove ingredient");
-    btn.textContent = "Remove";
-
-    row.appendChild(labName);
-    row.appendChild(labQty);
-    row.appendChild(labUnit);
-    row.appendChild(btn);
-    return row;
-  }
-
-  function initProcessIngredientRows() {
-    const container = $("#process-ingredients-rows");
-    if (!container) return;
-    container.innerHTML = "";
-    container.appendChild(buildProcessIngredientRowEl({}));
-  }
-
-  function fillProcessIngredientRowsFromEntry(e) {
-    const container = $("#process-ingredients-rows");
-    if (!container) return;
-    container.innerHTML = "";
-    let list = [];
-    if (Array.isArray(e.ingredients) && e.ingredients.length) {
-      list = e.ingredients.map((x) => ({
-        name: x.name != null ? String(x.name) : "",
-        quantity: x.quantity,
-        unit: x.unit != null ? String(x.unit) : "g",
-      }));
-    } else if (e.ingredientsDetail && String(e.ingredientsDetail).trim()) {
-      list = [{ name: String(e.ingredientsDetail).trim(), quantity: 1, unit: "legacy" }];
-    }
-    if (list.length === 0) list = [{}];
-    list.forEach((d) => container.appendChild(buildProcessIngredientRowEl(d)));
-  }
-
-  function collectProcessIngredientsFromForm() {
-    const container = $("#process-ingredients-rows");
-    if (!container) {
-      return { ok: false, error: "Ingredient list is not available.", ingredients: [] };
-    }
-    const rows = container.querySelectorAll(".process-ingredient-row");
-    const out = [];
-    for (const row of rows) {
-      const name = row.querySelector(".process-ingredient-name-input")?.value.trim() || "";
-      const qtyRaw = row.querySelector(".process-ingredient-qty-input")?.value;
-      const q = parseFloat(qtyRaw);
-      const unit = row.querySelector(".process-ingredient-unit-select")?.value || "g";
-      if (!name) continue;
-      if (Number.isNaN(q) || q <= 0) {
-        return {
-          ok: false,
-          error: `Enter a quantity greater than 0 for “${name}”.`,
-          ingredients: [],
-        };
-      }
-      out.push({ name, quantity: q, unit });
-    }
-    if (out.length === 0) {
-      return {
-        ok: false,
-        error: "Add at least one ingredient with a name and quantity.",
-        ingredients: [],
-      };
-    }
-    return { ok: true, error: "", ingredients: out };
-  }
-
-  function mergeProcessIngredientPricingHints(prevList, nextList) {
-    if (!Array.isArray(prevList) || !Array.isArray(nextList)) return nextList;
-    const prevByKey = new Map();
-    prevList.forEach((x) => {
-      if (x && x.name) prevByKey.set(String(x.name).trim().toLowerCase(), x);
-    });
-    return nextList.map((line) => {
-      const prev = prevByKey.get(line.name.trim().toLowerCase());
-      const o = { ...line };
-      if (prev && prev.unitCost != null && !Number.isNaN(Number(prev.unitCost))) {
-        o.unitCost = Number(prev.unitCost);
-      }
-      if (prev && prev.lineCost != null && !Number.isNaN(Number(prev.lineCost))) {
-        o.lineCost = Number(prev.lineCost);
-      }
-      return o;
-    });
-  }
-
-  function summarizeProcessIngredientsText(ingredients) {
-    if (!Array.isArray(ingredients)) return "";
-    return ingredients
-      .map((i) => `${i.name}: ${i.quantity} ${processIngredientUnitLabel(i.unit)}`)
-      .join("\n");
-  }
-
-  function renderProcessDishLibrary() {
-    const mount = $("#process-dish-library-mount");
-    if (!mount) return;
-    const entries = state.processEntries || [];
-    const byKey = new Map();
-    entries.forEach((e) => {
-      const key = (e.recipeName || "").trim().toLowerCase();
-      if (!key) return;
-      const t = getEntrySubmittedTime(e);
-      const ms = t && !Number.isNaN(t.getTime()) ? t.getTime() : 0;
-      const prev = byKey.get(key);
-      if (!prev || ms >= prev.ms) {
-        byKey.set(key, { entry: e, ms });
-      }
-    });
-    const dishes = Array.from(byKey.values())
-      .map((x) => x.entry)
-      .sort((a, b) =>
-        (a.recipeName || "").localeCompare(b.recipeName || "", undefined, { sensitivity: "base" })
-      );
-    mount.innerHTML = "";
-    if (dishes.length === 0) {
-      mount.innerHTML =
-        '<p class="muted" style="margin:0">No saved dishes yet. Save a recipe above to build this library.</p>';
-      return;
-    }
-    dishes.forEach((e) => {
-      const box = document.createElement("div");
-      box.className = "process-dish-library-item";
-      const h = document.createElement("h3");
-      h.className = "process-dish-library-title";
-      h.textContent = e.recipeName || "—";
-      const meta = document.createElement("p");
-      meta.className = "muted small";
-      meta.style.margin = "0.25rem 0 0.5rem";
-      const ingTot =
-        e.ingredientCostTotal != null && !Number.isNaN(Number(e.ingredientCostTotal))
-          ? Number(e.ingredientCostTotal).toFixed(2)
-          : "—";
-      meta.textContent = `${formatProcessDishCategory(e.dishCategory)} · ${e.numPortions ?? "—"} portions · Last saved ingredient total $${ingTot}`;
-      box.appendChild(h);
-      box.appendChild(meta);
-
-      const ing = Array.isArray(e.ingredients) ? e.ingredients : [];
-      if (ing.length > 0) {
-        const tw = document.createElement("div");
-        tw.className = "table-wrap";
-        const tbl = document.createElement("table");
-        tbl.className = "process-dish-ing-table";
-        const thead = document.createElement("thead");
-        const hr = document.createElement("tr");
-        ["Ingredient", "Quantity", "Unit"].forEach((lab) => {
-          const th = document.createElement("th");
-          th.textContent = lab;
-          hr.appendChild(th);
-        });
-        thead.appendChild(hr);
-        const tb = document.createElement("tbody");
-        ing.forEach((line) => {
-          const tr = document.createElement("tr");
-          const td1 = document.createElement("td");
-          td1.textContent = line.name || "—";
-          const td2 = document.createElement("td");
-          td2.textContent = line.quantity != null ? String(line.quantity) : "—";
-          const td3 = document.createElement("td");
-          td3.textContent = processIngredientUnitLabel(line.unit);
-          tr.appendChild(td1);
-          tr.appendChild(td2);
-          tr.appendChild(td3);
-          tb.appendChild(tr);
-        });
-        tbl.appendChild(thead);
-        tbl.appendChild(tb);
-        tw.appendChild(tbl);
-        box.appendChild(tw);
-      } else if (e.ingredientsDetail) {
-        const pre = document.createElement("pre");
-        pre.className = "process-dish-legacy-ing muted small";
-        pre.style.whiteSpace = "pre-wrap";
-        pre.style.margin = "0.35rem 0 0";
-        pre.textContent = e.ingredientsDetail;
-        box.appendChild(pre);
-      } else {
-        const p = document.createElement("p");
-        p.className = "muted small";
-        p.style.margin = "0.35rem 0 0";
-        p.textContent = "No ingredient lines stored.";
-        box.appendChild(p);
-      }
-      const fut = document.createElement("p");
-      fut.className = "muted small";
-      fut.style.margin = "0.5rem 0 0";
-      fut.textContent =
-        "Future: upload standard costs per ingredient name to auto-calculate recipe totals from these quantities.";
-      box.appendChild(fut);
-      mount.appendChild(box);
-    });
-  }
-
-  function clearProcessEditMode() {
-    processEditEntryId = null;
-    const form = $("#process-form");
-    if (form) form.reset();
-    $("#process-portions").value = "1";
-    $("#process-other-cost").value = "0";
-    $("#process-labor-minutes").value = "0";
-    $("#process-labor-rate").value = "0";
-    initProcessIngredientRows();
-    const c = $("#process-cancel-edit");
-    if (c) c.hidden = true;
-    const sb = $("#process-submit-btn");
-    if (sb) sb.textContent = "Save recipe";
-    renderProcessHistory();
-    renderProcessDishLibrary();
-  }
-
-  function beginProcessEditEntry(e) {
-    const latest = getLatestProcessEntry();
-    if (!e || !latest || e.id !== latest.id) return;
-    setProcessPortalSubView("form");
-    processEditEntryId = e.id;
-    $("#process-recipe-name").value = e.recipeName || "";
-    $("#process-dish-category").value = e.dishCategory || "";
-    $("#process-portions").value = String(e.numPortions ?? 1);
-    $("#process-ingredient-cost").value =
-      e.ingredientCostTotal != null && !Number.isNaN(Number(e.ingredientCostTotal))
-        ? String(e.ingredientCostTotal)
-        : "";
-    $("#process-other-cost").value =
-      e.otherCostTotal != null && !Number.isNaN(Number(e.otherCostTotal)) ? String(e.otherCostTotal) : "";
-    $("#process-labor-minutes").value =
-      e.laborMinutes != null && !Number.isNaN(Number(e.laborMinutes)) ? String(e.laborMinutes) : "";
-    $("#process-labor-rate").value =
-      e.laborHourlyRate != null && !Number.isNaN(Number(e.laborHourlyRate)) ? String(e.laborHourlyRate) : "";
-    fillProcessIngredientRowsFromEntry(e);
-    $("#process-prep-steps").value = e.prepSteps || "";
-    $("#process-allergens").value = e.allergensNotes || "";
-    const c = $("#process-cancel-edit");
-    if (c) c.hidden = false;
-    const sb = $("#process-submit-btn");
-    if (sb) sb.textContent = "Save changes";
-    renderProcessHistory();
-    renderProcessDishLibrary();
-  }
-
-  function renderProcessHistory() {
-    const wrap = $("#process-history-list");
-    if (!wrap) return;
-    const list = (state.processEntries || []).slice().reverse();
-    wrap.innerHTML = "";
-    if (list.length === 0) {
-      wrap.innerHTML = '<p class="muted" style="margin:0">No recipes yet.</p>';
-      return;
-    }
-    const latest = getLatestProcessEntry();
-    list.forEach((e) => {
-      const isLatest = latest && e.id === latest.id;
-      const row = document.createElement("div");
-      row.className = "portal-history-row" + (isLatest ? " is-latest" : "");
-      const body = document.createElement("div");
-      body.className = "portal-history-body";
-      const text = document.createElement("div");
-      text.className = "portal-history-text";
-      const total =
-        e.totalRecipeCost != null && !Number.isNaN(Number(e.totalRecipeCost))
-          ? Number(e.totalRecipeCost).toFixed(2)
-          : "—";
-      const per =
-        e.costPerPortion != null && !Number.isNaN(Number(e.costPerPortion))
-          ? Number(e.costPerPortion).toFixed(4)
-          : "—";
-      const l1 = document.createElement("div");
-      l1.innerHTML = `<strong>${escapeHtml(e.recipeName || "—")}</strong> · ${escapeHtml(formatProcessDishCategory(e.dishCategory))} · ${escapeHtml(String(e.numPortions ?? "—"))} portions · Total $${escapeHtml(total)} · $${escapeHtml(per)}/portion`;
-      const l2 = document.createElement("div");
-      l2.className = "muted small";
-      l2.textContent = e.timestamp || "—";
-      const l3 = document.createElement("div");
-      l3.className = "muted small";
-      const nIng = Array.isArray(e.ingredients) ? e.ingredients.length : 0;
-      l3.textContent =
-        nIng > 0
-          ? `${nIng} ingredient line${nIng === 1 ? "" : "s"}`
-          : e.ingredientsDetail
-            ? "Legacy ingredient text"
-            : "No ingredient list";
-      text.appendChild(l1);
-      text.appendChild(l2);
-      text.appendChild(l3);
-      body.appendChild(text);
-      row.appendChild(body);
-      if (isLatest) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "btn ghost portal-history-edit";
-        btn.dataset.processEntryId = e.id;
-        btn.textContent = "Edit";
-        row.appendChild(btn);
-      } else {
-        const sp = document.createElement("span");
-        sp.className = "portal-history-readonly muted";
-        sp.textContent = "Read only";
-        row.appendChild(sp);
-      }
-      wrap.appendChild(row);
-    });
-  }
-
-  function clearReminderEditMode() {
-    reminderEditEntryId = null;
-    const form = $("#reminder-form");
-    if (form) form.reset();
-    const c = $("#reminder-cancel-edit");
-    if (c) c.hidden = true;
-    const sb = $("#reminder-submit-btn");
-    if (sb) sb.textContent = "Save reminder";
-    renderRemindersView();
-  }
-
-  function beginReminderEditEntry(r) {
-    const latest = getLatestReminderByCreatedAt();
-    if (!r || !latest || r.id !== latest.id) return;
-    setRemindersPortalSubView("form");
-    reminderEditEntryId = r.id;
-    $("#reminder-title").value = r.title || "";
-    $("#reminder-due").value = isoToDatetimeLocalValue(r.due);
-    $("#reminder-notes").value = r.notes || "";
-    const c = $("#reminder-cancel-edit");
-    if (c) c.hidden = false;
-    const sb = $("#reminder-submit-btn");
-    if (sb) sb.textContent = "Save changes";
-    renderRemindersView();
   }
 
   function clearCustomPortalEditMode(portal) {
@@ -3795,69 +2851,6 @@
       dateStyle: "medium",
       timeStyle: "short",
     }).format(d);
-  }
-
-  function reminderId() {
-    return crypto.randomUUID
-      ? crypto.randomUUID()
-      : "r-" + Date.now() + "-" + Math.random().toString(36).slice(2, 9);
-  }
-
-  function renderRemindersView() {
-    const list = $("#reminders-list");
-    if (!list) return;
-    const items = (state.reminders || []).slice().sort((a, b) => new Date(a.due) - new Date(b.due));
-    list.innerHTML = "";
-    if (items.length === 0) {
-      list.innerHTML = '<p class="muted" style="margin:0">No reminders yet. Add one above.</p>';
-      return;
-    }
-    const latest = getLatestReminderByCreatedAt();
-    const now = Date.now();
-    items.forEach((r) => {
-      const due = new Date(r.due);
-      const row = document.createElement("div");
-      row.className = "reminder-row";
-      const overdue = due.getTime() < now;
-      const badge = overdue
-        ? '<span class="reminder-badge is-overdue">Past due</span>'
-        : due.getTime() - now < 864e5
-          ? '<span class="reminder-badge is-soon">Soon</span>'
-          : '<span class="reminder-badge">Scheduled</span>';
-      const isLatest = latest && r.id === latest.id;
-      const editBtn = isLatest
-        ? `<button type="button" class="btn ghost reminder-edit" data-id="${escapeHtml(r.id)}">Edit</button>`
-        : "";
-      row.innerHTML = `
-        <div class="reminder-row-main">
-          <div class="reminder-title">${escapeHtml(r.title)} ${badge}</div>
-          <div class="reminder-meta">${escapeHtml(formatReminderWhen(due))}</div>
-          ${r.notes ? `<div class="reminder-notes">${escapeHtml(r.notes)}</div>` : ""}
-        </div>
-        <div class="reminder-row-actions">
-          ${editBtn}
-          <button type="button" class="btn ghost reminder-delete" data-id="${escapeHtml(r.id)}">Remove</button>
-        </div>
-      `;
-      list.appendChild(row);
-    });
-    list.querySelectorAll(".reminder-edit").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        const r = (state.reminders || []).find((x) => x.id === id);
-        if (r) beginReminderEditEntry(r);
-      });
-    });
-    list.querySelectorAll(".reminder-delete").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        const id = btn.getAttribute("data-id");
-        if (reminderEditEntryId === id) reminderEditEntryId = null;
-        state.reminders = (state.reminders || []).filter((x) => x.id !== id);
-        saveState(state);
-        renderRemindersView();
-        renderDashboard();
-      });
-    });
   }
 
   function buildCredRow(role, username, password) {
@@ -4536,20 +3529,6 @@
   const surveyBtnAssigned = $("#survey-btn-assigned-work");
   if (surveyBtnAssigned) surveyBtnAssigned.addEventListener("click", () => setSurveyPortalSubView("assigned"));
 
-  const processBtnHist = $("#process-btn-view-history");
-  if (processBtnHist) processBtnHist.addEventListener("click", () => setProcessPortalSubView("history"));
-  const processBtnBack = $("#process-btn-back-form");
-  if (processBtnBack) processBtnBack.addEventListener("click", () => setProcessPortalSubView("form"));
-  const processBtnAssigned = $("#process-btn-assigned-work");
-  if (processBtnAssigned) processBtnAssigned.addEventListener("click", () => setProcessPortalSubView("assigned"));
-
-  const remBtnHist = $("#reminders-btn-view-history");
-  if (remBtnHist) remBtnHist.addEventListener("click", () => setRemindersPortalSubView("history"));
-  const remBtnBack = $("#reminders-btn-back-form");
-  if (remBtnBack) remBtnBack.addEventListener("click", () => setRemindersPortalSubView("form"));
-  const remBtnAssigned = $("#reminders-btn-assigned-work");
-  if (remBtnAssigned) remBtnAssigned.addEventListener("click", () => setRemindersPortalSubView("assigned"));
-
   const cpBtnHist = $("#custom-portal-btn-view-history");
   if (cpBtnHist) cpBtnHist.addEventListener("click", () => setCustomPortalSubView("history"));
   const cpBtnRem = $("#custom-portal-btn-reminders");
@@ -4569,11 +3548,6 @@
     });
   }
 
-  const calBtnAssigned = $("#calendar-btn-assigned-work");
-  if (calBtnAssigned) calBtnAssigned.addEventListener("click", () => setCalendarPortalSubView("assigned"));
-  const calBtnBackMain = $("#calendar-btn-back-main");
-  if (calBtnBackMain) calBtnBackMain.addEventListener("click", () => setCalendarPortalSubView("main"));
-
   const viewSurvey = $("#view-survey");
   if (viewSurvey) {
     viewSurvey.addEventListener("click", (ev) => {
@@ -4586,48 +3560,6 @@
         const id = ed.getAttribute("data-survey-entry-id");
         const e = (state.surveyEntries || []).find((x) => x.id === id);
         if (e) beginSurveyEditEntry(e);
-      }
-    });
-  }
-
-  const viewProcess = $("#view-process");
-  if (viewProcess) {
-    viewProcess.addEventListener("click", (ev) => {
-      if (ev.target.closest("#process-add-ingredient")) {
-        const container = $("#process-ingredients-rows");
-        if (container) container.appendChild(buildProcessIngredientRowEl({}));
-        return;
-      }
-      const rm = ev.target.closest(".process-ingredient-remove");
-      if (rm && viewProcess.contains(rm)) {
-        const row = rm.closest(".process-ingredient-row");
-        const container = $("#process-ingredients-rows");
-        const n = container && container.querySelectorAll(".process-ingredient-row").length;
-        if (row && container && n > 1) {
-          row.remove();
-        } else {
-          alert("Keep at least one ingredient row. Remove the text if you do not need an item.");
-        }
-        return;
-      }
-      if (ev.target.closest("#process-cancel-edit")) {
-        clearProcessEditMode();
-        return;
-      }
-      const ed = ev.target.closest(".portal-history-edit");
-      if (ed && $("#process-history-list") && $("#process-history-list").contains(ed)) {
-        const id = ed.getAttribute("data-process-entry-id");
-        const e = (state.processEntries || []).find((x) => x.id === id);
-        if (e) beginProcessEditEntry(e);
-      }
-    });
-  }
-
-  const viewReminders = $("#view-reminders");
-  if (viewReminders) {
-    viewReminders.addEventListener("click", (ev) => {
-      if (ev.target.closest("#reminder-cancel-edit")) {
-        clearReminderEditMode();
       }
     });
   }
@@ -4802,55 +3734,6 @@
     renderDashboard();
   });
 
-  $("#reminder-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const title = $("#reminder-title").value.trim();
-    const dueVal = $("#reminder-due").value;
-    const notes = $("#reminder-notes").value.trim();
-    if (!title || !dueVal) {
-      alert("Please enter a title and date & time.");
-      return;
-    }
-    const dueDate = new Date(dueVal);
-    if (Number.isNaN(dueDate.getTime())) {
-      alert("Invalid date.");
-      return;
-    }
-    if (!state.reminders) state.reminders = [];
-    const latest = getLatestReminderByCreatedAt();
-    if (reminderEditEntryId) {
-      const target = state.reminders.find((x) => x.id === reminderEditEntryId);
-      if (!target || !latest || target.id !== latest.id) {
-        alert("Only the most recently added reminder can be edited.");
-        reminderEditEntryId = null;
-        renderRemindersView();
-        return;
-      }
-      target.title = title;
-      target.due = dueDate.toISOString();
-      target.notes = notes;
-      target.submittedBy = entrySubmittedBy();
-    } else {
-      state.reminders.push({
-        id: reminderId(),
-        title,
-        due: dueDate.toISOString(),
-        notes,
-        createdAt: new Date().toISOString(),
-        submittedBy: entrySubmittedBy(),
-      });
-    }
-    reminderEditEntryId = null;
-    saveState(state);
-    $("#reminder-form").reset();
-    const rc = $("#reminder-cancel-edit");
-    if (rc) rc.hidden = true;
-    const rsb = $("#reminder-submit-btn");
-    if (rsb) rsb.textContent = "Save reminder";
-    renderRemindersView();
-    renderDashboard();
-  });
-
   $("#survey-form").addEventListener("submit", (ev) => {
     ev.preventDefault();
     const employees = $("#survey-employees").value;
@@ -4888,83 +3771,6 @@
     saveState(state);
     alert(editingLatest ? "Changes saved." : "Survey saved with timestamp:\n" + timestamp);
     clearSurveyEditMode();
-    renderDashboard();
-  });
-
-  $("#process-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const recipeName = $("#process-recipe-name").value.trim();
-    const dishCategory = $("#process-dish-category").value;
-    const portionsRaw = $("#process-portions").value;
-    const numPortions = Math.max(1, parseInt(portionsRaw, 10) || 1);
-    const ingCost = parseFloat($("#process-ingredient-cost").value);
-    const otherCost = parseFloat($("#process-other-cost").value);
-    const laborMin = parseFloat($("#process-labor-minutes").value);
-    const laborRate = parseFloat($("#process-labor-rate").value);
-    const prepSteps = $("#process-prep-steps").value.trim();
-    const allergensNotes = $("#process-allergens").value.trim();
-
-    if (!recipeName || !dishCategory) {
-      alert("Enter a recipe or dish name and choose a category.");
-      return;
-    }
-    const ingRes = collectProcessIngredientsFromForm();
-    if (!ingRes.ok) {
-      alert(ingRes.error);
-      return;
-    }
-    let ingredients = ingRes.ingredients;
-    const latest = getLatestProcessEntry();
-    const editingLatest = processEditEntryId && latest && processEditEntryId === latest.id;
-    if (editingLatest && Array.isArray(latest.ingredients)) {
-      ingredients = mergeProcessIngredientPricingHints(latest.ingredients, ingredients);
-    }
-    const ingredientsDetail = summarizeProcessIngredientsText(ingredients);
-
-    if (Number.isNaN(ingCost) || ingCost < 0) {
-      alert("Enter a valid total ingredient cost (0 or more).");
-      return;
-    }
-    const otherC = Number.isNaN(otherCost) || otherCost < 0 ? 0 : otherCost;
-    const lm = Number.isNaN(laborMin) || laborMin < 0 ? 0 : laborMin;
-    const lr = Number.isNaN(laborRate) || laborRate < 0 ? 0 : laborRate;
-    const laborCostTotal = Math.round((lm / 60) * lr * 100) / 100;
-    const ingredientCostTotal = Math.round(ingCost * 100) / 100;
-    const otherCostTotal = Math.round(otherC * 100) / 100;
-    const totalRecipeCost = Math.round((ingredientCostTotal + otherCostTotal + laborCostTotal) * 100) / 100;
-    const costPerPortion = Math.round((totalRecipeCost / numPortions) * 10000) / 10000;
-
-    const timestamp = formatNow();
-    const submittedAt = new Date().toISOString();
-    const by = entrySubmittedBy();
-    const payload = {
-      recipeName,
-      dishCategory,
-      numPortions,
-      ingredientCostTotal,
-      otherCostTotal,
-      laborMinutes: lm,
-      laborHourlyRate: lr,
-      laborCostTotal,
-      totalRecipeCost,
-      costPerPortion,
-      ingredients,
-      ingredientsDetail,
-      prepSteps,
-      allergensNotes,
-      timestamp,
-      submittedAt,
-      submittedBy: by,
-    };
-    if (!Array.isArray(state.processEntries)) state.processEntries = [];
-    if (editingLatest) {
-      Object.assign(latest, payload);
-    } else {
-      state.processEntries.push({ id: entryId(), ...payload });
-    }
-    saveState(state);
-    alert(editingLatest ? "Changes saved." : "Recipe saved with timestamp:\n" + timestamp);
-    clearProcessEditMode();
     renderDashboard();
   });
 
@@ -5353,17 +4159,14 @@
       const btn = ev.target.closest("[data-dash-tab]");
       if (!btn || !dashTabs.contains(btn)) return;
       const f = btn.getAttribute("data-dash-tab");
-      if (
-        !["all", "field", "survey", "process", "reminders", "calendar"].includes(f) &&
-        !(f && f.startsWith("cp_"))
-      ) {
+      if (!["all", "field", "survey"].includes(f) && !(f && f.startsWith("cp_"))) {
         return;
       }
       dashboardFilter = f;
       setDashboardTabsUI(f);
       setDashboardSectionVisibility(f);
       const ds = getDashboardFilteredDatasets();
-      renderDashboardCharts(ds.field, ds.survey, ds.process, ds.reminders, ds.custom, ds.calendar);
+      renderDashboardCharts(ds.field, ds.survey, ds.custom);
     });
   }
 
@@ -5450,59 +4253,6 @@
       });
     });
   })();
-
-  const calAddBtn = $("#calendar-add-task-btn");
-  if (calAddBtn) calAddBtn.addEventListener("click", () => commitAddCalendarTask());
-  const calNewInp = $("#calendar-new-task");
-  if (calNewInp) {
-    calNewInp.addEventListener("keydown", (ev) => {
-      if (ev.key === "Enter") {
-        ev.preventDefault();
-        commitAddCalendarTask();
-      }
-    });
-  }
-  const calPrev = $("#calendar-prev-month");
-  if (calPrev) {
-    calPrev.addEventListener("click", () => {
-      calendarDisplayMonth -= 1;
-      if (calendarDisplayMonth < 0) {
-        calendarDisplayMonth = 11;
-        calendarDisplayYear -= 1;
-      }
-      renderCalendarMonth();
-    });
-  }
-  const calNext = $("#calendar-next-month");
-  if (calNext) {
-    calNext.addEventListener("click", () => {
-      calendarDisplayMonth += 1;
-      if (calendarDisplayMonth > 11) {
-        calendarDisplayMonth = 0;
-        calendarDisplayYear += 1;
-      }
-      renderCalendarMonth();
-    });
-  }
-  const calGrid = $("#calendar-grid");
-  if (calGrid) {
-    calGrid.addEventListener("click", (ev) => {
-      const btn = ev.target.closest(".calendar-day-cell[data-ymd]");
-      if (!btn || !calGrid.contains(btn)) return;
-      calendarSelectedYmd = btn.getAttribute("data-ymd");
-      renderCalendarMonth();
-      renderCalendarDayTasks();
-    });
-  }
-  const calTaskList = $("#calendar-task-list");
-  if (calTaskList) {
-    calTaskList.addEventListener("change", (ev) => {
-      const t = ev.target;
-      if (!t.matches || !t.matches('input[type="checkbox"][data-task-id]')) return;
-      const id = t.getAttribute("data-task-id");
-      if (id) setCalendarTaskDone(id, t.checked);
-    });
-  }
 
   (async function boot() {
     await pullServerOnBoot();
