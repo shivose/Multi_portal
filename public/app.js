@@ -1969,14 +1969,38 @@
     return list.filter((e) => instantInDateRange(getEntrySubmittedTime(e), fromStr, toStr));
   }
 
+  /** Submissions for a portal may be keyed as string id, raw id, or legacy keys — normalize lookup. */
+  function getCustomPortalEntriesArrayForPortal(p) {
+    const ce = state.customPortalEntries;
+    if (!ce || typeof ce !== "object" || !p) return [];
+    const pid = String(p.id).trim();
+    if (!pid) return [];
+    const tryKeys = [pid, p.id, p.id != null ? String(p.id) : null];
+    for (let i = 0; i < tryKeys.length; i++) {
+      const k = tryKeys[i];
+      if (k == null || k === "") continue;
+      const arr = ce[k];
+      if (Array.isArray(arr)) return arr;
+    }
+    for (const k of Object.keys(ce)) {
+      if (String(k).trim() === pid && Array.isArray(ce[k])) return ce[k];
+    }
+    return [];
+  }
+
+  function filterCustomPortalEntriesByDate(list, fromStr, toStr) {
+    const arr = Array.isArray(list) ? list : [];
+    if (!fromStr && !toStr) return arr.slice();
+    return arr.filter((e) => instantInDateRange(getEntrySubmittedTime(e), fromStr, toStr));
+  }
+
   function getDashboardFilteredDatasets() {
     const fromStr = dashboardAppliedDateFrom;
     const toStr = dashboardAppliedDateTo;
     const custom = {};
     getCustomPortalsList().forEach((p) => {
       const pid = String(p.id).trim();
-      const list =
-        (state.customPortalEntries && (state.customPortalEntries[pid] ?? state.customPortalEntries[p.id])) || [];
+      const list = getCustomPortalEntriesArrayForPortal(p);
       custom[pid] = filterCustomPortalEntriesByDate(list, fromStr, toStr);
     });
     return {
@@ -2980,7 +3004,10 @@
   }
 
   function getLatestCustomEntry(portalId) {
-    const list = (state.customPortalEntries && state.customPortalEntries[portalId]) || [];
+    const portal = portalId != null ? findCustomPortalById(portalId) : null;
+    const list = portal
+      ? getCustomPortalEntriesArrayForPortal(portal)
+      : (state.customPortalEntries && state.customPortalEntries[portalId]) || [];
     if (!list.length) return null;
     return list[list.length - 1];
   }
@@ -3222,7 +3249,7 @@
   function renderCustomPortalHistory(portal) {
     const wrap = $("#custom-portal-history-list");
     if (!wrap || !portal) return;
-    const list = ((state.customPortalEntries && state.customPortalEntries[portal.id]) || []).slice().reverse();
+    const list = getCustomPortalEntriesArrayForPortal(portal).slice().reverse();
     wrap.innerHTML = "";
     if (list.length === 0) {
       wrap.innerHTML = '<p class="muted" style="margin:0">No responses yet.</p>';
