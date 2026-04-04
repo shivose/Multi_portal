@@ -666,11 +666,13 @@
     lastStateStorageRaw = raw;
     state = loadState();
 
-    // Re-render only the “Assigned work” mounts so we don't disrupt in-progress edits.
+    // Re-render assigned-work mounts; manager UI also lists custom portals (tabs + assign scope).
     refreshAllAssigneeWorkMounts();
     if (isDashboardManagerRole()) {
-      // Manager / supervisor view also includes the assignments table.
-      renderManagerAssignmentsTable();
+      renderManagerAssignWorkUI();
+      if (viewKeyForRole(sessionRole) === "dashboard") {
+        renderDashboard();
+      }
     }
   }
 
@@ -4246,12 +4248,12 @@
   }
 
   document.addEventListener("visibilitychange", () => {
-    if (sessionRole && document.visibilityState === "visible") {
-      if (typeof sessionRole === "string" && sessionRole.startsWith("cp_")) {
-        syncCustomPortalRemindersButton();
-        const remP = $("#custom-portal-panel-reminders");
-        if (remP && !remP.hidden) renderCustomPortalRemindersPanel();
-      }
+    if (!sessionRole || document.visibilityState !== "visible") return;
+    pollServerForNewerRevision();
+    if (typeof sessionRole === "string" && sessionRole.startsWith("cp_")) {
+      syncCustomPortalRemindersButton();
+      const remP = $("#custom-portal-panel-reminders");
+      if (remP && !remP.hidden) renderCustomPortalRemindersPanel();
     }
   });
 
