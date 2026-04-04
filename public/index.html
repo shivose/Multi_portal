@@ -317,6 +317,23 @@
           </button>
         </div>
 
+        <div id="dashboard-data-source-strip" class="dashboard-data-source-strip">
+          <p class="muted dash-portal-hint">
+            Data source for charts and tables (always shown here). Custom portals created in Admin appear as extra tabs.
+          </p>
+          <div class="dash-portal-tabs" id="dashboard-portal-tabs" role="tablist" aria-label="Dashboard data source">
+            <button type="button" class="nav-btn is-active" role="tab" data-dash-tab="all" aria-selected="true">
+              All portals
+            </button>
+            <button type="button" class="nav-btn" role="tab" data-dash-tab="field" aria-selected="false">
+              Work report
+            </button>
+            <button type="button" class="nav-btn" role="tab" data-dash-tab="survey" aria-selected="false">
+              Survey
+            </button>
+          </div>
+        </div>
+
         <div id="dashboard-section-assign" hidden>
         <div id="dash-manager-assign-work" class="card assigned-work-manager-card" hidden>
           <h2>Assign work</h2>
@@ -468,19 +485,6 @@
             </div>
           </div>
           <p id="dash-date-active-hint" class="hint dash-date-active-hint" hidden></p>
-        </div>
-
-        <p class="muted dash-portal-hint">Choose which portal’s data to focus on, or view everything at once.</p>
-        <div class="dash-portal-tabs" id="dashboard-portal-tabs" role="tablist" aria-label="Dashboard data source">
-          <button type="button" class="nav-btn is-active" role="tab" data-dash-tab="all" aria-selected="true">
-            All portals
-          </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="field" aria-selected="false">
-            Work report
-          </button>
-          <button type="button" class="nav-btn" role="tab" data-dash-tab="survey" aria-selected="false">
-            Survey
-          </button>
         </div>
 
         <div class="dash-grid" id="dash-stats-grid">

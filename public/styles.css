@@ -990,6 +990,15 @@ body {
   margin-bottom: 0.75rem;
 }
 
+/* Portal filter tabs stay visible on Assigned work + Dashboard (analytics) sub-views */
+.dashboard-data-source-strip {
+  margin: 0 0 1.25rem;
+}
+
+.dashboard-data-source-strip .dash-portal-tabs {
+  margin-bottom: 0;
+}
+
 .dash-portal-tabs {
   display: flex;
   flex-wrap: wrap;
