@@ -155,6 +155,24 @@
     };
   }
 
+  /** Accept array, object map, or JSON string (double-encoded storage). */
+  function coerceRawCustomPortalsToArray(raw) {
+    if (raw == null) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === "string") {
+      try {
+        const j = JSON.parse(raw);
+        if (Array.isArray(j)) return j;
+        if (j && typeof j === "object") return Object.values(j);
+      } catch {
+        return [];
+      }
+      return [];
+    }
+    if (typeof raw === "object") return Object.values(raw);
+    return [];
+  }
+
   function normalizeWorkAssignment(raw) {
     if (!raw || typeof raw !== "object") return null;
     const targetUsername = raw.targetUsername != null ? String(raw.targetUsername).trim() : "";
@@ -285,12 +303,7 @@
               password: adminRaw.password != null ? String(adminRaw.password) : "",
             }
           : base.credentials.admin;
-      let rawPortals = [];
-      if (Array.isArray(parsed.customPortals)) {
-        rawPortals = parsed.customPortals;
-      } else if (parsed.customPortals && typeof parsed.customPortals === "object") {
-        rawPortals = Object.values(parsed.customPortals);
-      }
+      const rawPortals = coerceRawCustomPortalsToArray(parsed.customPortals);
       const customPortals = rawPortals.map(normalizeCustomPortal).filter(Boolean);
       const rawEntries =
         parsed.customPortalEntries && typeof parsed.customPortalEntries === "object"
@@ -347,10 +360,7 @@
     }
     if (!localParsed || typeof localParsed !== "object") return serverNorm;
 
-    let localPortals = [];
-    const lp = localParsed.customPortals;
-    if (Array.isArray(lp)) localPortals = lp;
-    else if (lp && typeof lp === "object") localPortals = Object.values(lp);
+    const localPortals = coerceRawCustomPortalsToArray(localParsed.customPortals);
     if (localPortals.length === 0) return serverNorm;
 
     const list = Array.isArray(serverNorm.customPortals) ? serverNorm.customPortals.slice() : [];
@@ -382,6 +392,53 @@
     }
     serverNorm.customPortalEntries = mergedEntries;
     return serverNorm;
+  }
+
+  /**
+   * Manager tab can hold stale `state` while localStorage was updated by Admin (or another tab).
+   * Union portals + entries from the latest localStorage into `state` before rendering the dashboard.
+   */
+  function rehydrateCustomPortalsFromBrowserStorage() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (!raw || raw === "") return;
+    let parsed = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (!parsed || typeof parsed !== "object") return;
+    const fromLs = coerceRawCustomPortalsToArray(parsed.customPortals);
+    if (fromLs.length === 0) return;
+    if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
+      state.customPortalEntries = {};
+    }
+    const byId = new Map(getCustomPortalsList().map((p) => [String(p.id).trim(), p]));
+    const incEntries =
+      parsed.customPortalEntries && typeof parsed.customPortalEntries === "object"
+        ? parsed.customPortalEntries
+        : {};
+    for (const pr of fromLs) {
+      const np = normalizeCustomPortal(pr);
+      if (!np) continue;
+      const id = String(np.id).trim();
+      if (!id) continue;
+      if (!byId.has(id)) byId.set(id, np);
+    }
+    state.customPortals = Array.from(byId.values());
+    for (const p of state.customPortals) {
+      const pid = String(p.id).trim();
+      const cur = state.customPortalEntries[pid];
+      const inc = incEntries[pid];
+      if (Array.isArray(inc) && (!Array.isArray(cur) || cur.length === 0)) {
+        state.customPortalEntries[pid] = inc.slice();
+      }
+    }
   }
 
   function loadState() {
@@ -1296,6 +1353,7 @@
       setSurveyPortalSubView("form");
       startTsTick("#survey-timestamp");
     } else if (role === "dashboard" || role === "supervisor") {
+      rehydrateCustomPortalsFromBrowserStorage();
       stopTsTick();
       dashboardFilter = "all";
       setDashboardTabsUI("all");
@@ -2553,6 +2611,7 @@
   }
 
   function renderDashboard() {
+    if (isDashboardManagerRole()) rehydrateCustomPortalsFromBrowserStorage();
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     const cpEmptyHint = $("#dashboard-custom-portals-empty-hint");
@@ -4279,6 +4338,7 @@
       if (!state.customPortalEntries) state.customPortalEntries = {};
       if (!state.customPortalEntries[newPortal.id]) state.customPortalEntries[newPortal.id] = [];
       saveState(state);
+      if (apiSyncEnabled && serverSyncReady) void flushServerPushNow();
       renderAdminCustomPortalsList();
       const saved = findCustomPortalById(newPortal.id);
       if (saved) openAdminCustomEditor(saved);
@@ -4303,6 +4363,7 @@
         delete state.customPortalEntries[id];
       }
       saveState(state);
+      if (apiSyncEnabled && serverSyncReady) void flushServerPushNow();
       renderAdminCustomPortalsList();
       const rest = getCustomPortalsList();
       if (rest.length > 0) {
