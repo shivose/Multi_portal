@@ -695,6 +695,14 @@
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
+  /** Click `target` can be a Text node; only Elements have `closest`. */
+  function closestFromEvent(ev, selector) {
+    if (!ev || ev.target == null) return null;
+    const t = ev.target;
+    const el = t.nodeType === 1 ? t : t.parentElement;
+    return el && typeof el.closest === "function" ? el.closest(selector) : null;
+  }
+
   function togglePasswordVisibility(button, input) {
     if (!button || !input) return;
     const show = input.type === "password";
@@ -3389,41 +3397,54 @@
     updateAdminCustomTabHighlight();
   }
 
-  $("#login-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    setError("#login-error", "");
-    const username = $("#login-username").value;
-    const password = $("#login-password").value;
-    const { matches, sessionUser } = matchingRolesForLogin(username, password);
-    if (matches.length === 0) {
-      setError("#login-error", "Invalid username or password.");
-      return;
-    }
-    sessionUsername = sessionUser || String(username ?? "").trim();
-    if (matches.length === 1) {
-      sessionPortalOptions = matches.slice();
-      sessionRole = matches[0];
-      enterPortal(matches[0]);
-      return;
-    }
-    sessionPortalOptions = matches.slice();
-    showRolePicker(matches);
-  });
-
-  $("#role-picker-back").addEventListener("click", () => {
-    if (rolePickerMode === "switch" && sessionRole) {
-      showView(viewKeyForRole(sessionRole));
-    } else {
-      sessionPortalOptions = null;
-      sessionUsername = null;
-      clearSessionAuth();
-      showView("login");
+  const loginFormEl = $("#login-form");
+  if (loginFormEl) {
+    loginFormEl.addEventListener("submit", (ev) => {
+      ev.preventDefault();
       setError("#login-error", "");
-    }
-  });
+      const uIn = $("#login-username");
+      const pIn = $("#login-password");
+      if (!uIn || !pIn) return;
+      const username = uIn.value;
+      const password = pIn.value;
+      const { matches, sessionUser } = matchingRolesForLogin(username, password);
+      if (matches.length === 0) {
+        setError("#login-error", "Invalid username or password.");
+        return;
+      }
+      sessionUsername = sessionUser || String(username ?? "").trim();
+      if (matches.length === 1) {
+        sessionPortalOptions = matches.slice();
+        sessionRole = matches[0];
+        enterPortal(matches[0]);
+        return;
+      }
+      sessionPortalOptions = matches.slice();
+      showRolePicker(matches);
+    });
+  }
 
-  $(".app").addEventListener("click", (ev) => {
-    const mgrFilter = ev.target.closest("[data-assign-manager-filter]");
+  const rolePickerBack = $("#role-picker-back");
+  if (rolePickerBack) {
+    rolePickerBack.addEventListener("click", () => {
+      if (rolePickerMode === "switch" && sessionRole) {
+        showView(viewKeyForRole(sessionRole));
+      } else {
+        sessionPortalOptions = null;
+        sessionUsername = null;
+        clearSessionAuth();
+        showView("login");
+        setError("#login-error", "");
+      }
+    });
+  }
+
+  const appRoot = $(".app");
+  if (!appRoot) {
+    console.error("multi-login-portal: missing .app root; buttons will not work.");
+  }
+  if (appRoot) appRoot.addEventListener("click", (ev) => {
+    const mgrFilter = closestFromEvent(ev, "[data-assign-manager-filter]");
     if (mgrFilter && isDashboardManagerRole()) {
       const mode = mgrFilter.getAttribute("data-assign-manager-filter");
       if (mode === "active" || mode === "completed") {
@@ -3432,7 +3453,7 @@
       }
       return;
     }
-    const delAssign = ev.target.closest("[data-assign-del]");
+    const delAssign = closestFromEvent(ev, "[data-assign-del]");
     if (delAssign && isDashboardManagerRole()) {
       const id = delAssign.getAttribute("data-assign-del");
       if (id) {
@@ -3443,7 +3464,7 @@
       }
       return;
     }
-    const completeAssign = ev.target.closest("[data-assign-complete]");
+    const completeAssign = closestFromEvent(ev, "[data-assign-complete]");
     if (completeAssign && sessionUsername) {
       const id = completeAssign.getAttribute("data-assign-complete");
       const a = id && (state.workAssignments || []).find((x) => x.id === id);
@@ -3459,35 +3480,35 @@
       }
       return;
     }
-    const sw = ev.target.closest("[data-switch-portal]");
+    const sw = closestFromEvent(ev, "[data-switch-portal]");
     if (sw && sessionPortalOptions && sessionPortalOptions.length >= 2) {
       showRolePicker(sessionPortalOptions.slice(), { fromSwitch: true });
       return;
     }
     const form = $("#custom-portal-form");
     if (form && form.contains(ev.target)) {
-      const camOpen = ev.target.closest(".custom-portal-camera-open");
+      const camOpen = closestFromEvent(ev, ".custom-portal-camera-open");
       if (camOpen) {
         ev.preventDefault();
         const fieldId = camOpen.getAttribute("data-field-id");
         if (fieldId) openCustomPortalCameraField(fieldId);
         return;
       }
-      if (ev.target.closest("#custom-portal-camera-capture")) {
+      if (closestFromEvent(ev, "#custom-portal-camera-capture")) {
         captureCustomPortalCameraField();
         return;
       }
-      if (ev.target.closest("#custom-portal-camera-cancel")) {
+      if (closestFromEvent(ev, "#custom-portal-camera-cancel")) {
         stopCustomPortalCamera();
         return;
       }
     }
   });
 
-  $(".app").addEventListener("change", (ev) => {
+  if (appRoot) appRoot.addEventListener("change", (ev) => {
     const t = ev.target;
     const form = $("#custom-portal-form");
-    if (!form || !form.contains(t) || !t.matches || !t.matches(".custom-portal-image-file")) return;
+    if (!form || !t || t.nodeType !== 1 || !form.contains(t) || !t.matches(".custom-portal-image-file")) return;
     const fieldId = t.getAttribute("data-field-id");
     const file = t.files && t.files[0];
     if (fieldId) handleCustomPortalImageFileChosen(fieldId, file || null);
@@ -3553,11 +3574,11 @@
   const viewField = $("#view-field");
   if (viewField) {
     viewField.addEventListener("click", (ev) => {
-      if (ev.target.closest("#field-cancel-edit")) {
+      if (closestFromEvent(ev, "#field-cancel-edit")) {
         clearFieldEditMode();
         return;
       }
-      const ed = ev.target.closest(".portal-history-edit");
+      const ed = closestFromEvent(ev, ".portal-history-edit");
       if (ed && $("#field-history-list") && $("#field-history-list").contains(ed)) {
         const id = ed.getAttribute("data-field-entry-id");
         const e = (state.fieldEntries || []).find((x) => x.id === id);
@@ -3585,7 +3606,7 @@
   const dashManagerTabs = $("#dashboard-manager-section-tabs");
   if (dashManagerTabs) {
     dashManagerTabs.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-dash-section]");
+      const btn = closestFromEvent(ev, "[data-dash-section]");
       if (!btn || !dashManagerTabs.contains(btn)) return;
       const sec = btn.getAttribute("data-dash-section");
       if (sec === "assign" || sec === "analytics") setDashboardManagerSection(sec);
@@ -3595,11 +3616,11 @@
   const viewSurvey = $("#view-survey");
   if (viewSurvey) {
     viewSurvey.addEventListener("click", (ev) => {
-      if (ev.target.closest("#survey-cancel-edit")) {
+      if (closestFromEvent(ev, "#survey-cancel-edit")) {
         clearSurveyEditMode();
         return;
       }
-      const ed = ev.target.closest(".portal-history-edit");
+      const ed = closestFromEvent(ev, ".portal-history-edit");
       if (ed && $("#survey-history-list") && $("#survey-history-list").contains(ed)) {
         const id = ed.getAttribute("data-survey-entry-id");
         const e = (state.surveyEntries || []).find((x) => x.id === id);
@@ -3611,13 +3632,13 @@
   const viewCustomPortal = $("#view-custom-portal");
   if (viewCustomPortal) {
     viewCustomPortal.addEventListener("click", (ev) => {
-      if (ev.target.closest("#custom-portal-cancel-edit")) {
+      if (closestFromEvent(ev, "#custom-portal-cancel-edit")) {
         const pid = $("#custom-portal-form") && $("#custom-portal-form").dataset.portalId;
         const p = pid && findCustomPortalById(pid);
         if (p) clearCustomPortalEditMode(p);
         return;
       }
-      const ed = ev.target.closest(".portal-history-edit");
+      const ed = closestFromEvent(ev, ".portal-history-edit");
       if (ed && $("#custom-portal-history-list") && $("#custom-portal-history-list").contains(ed)) {
         const id = ed.getAttribute("data-custom-entry-id");
         const pid = $("#custom-portal-form") && $("#custom-portal-form").dataset.portalId;
@@ -3629,33 +3650,43 @@
     });
   }
 
-  $("#field-photo").addEventListener("change", (ev) => {
-    const file = ev.target.files && ev.target.files[0];
-    const img = $("#field-photo-preview");
-    stopCamera();
-    clearFieldCameraCapture();
-    revokeFieldPhotoUrl();
-    if (!file) {
-      img.hidden = true;
-      img.removeAttribute("src");
-      return;
-    }
-    fieldPhotoObjectUrl = URL.createObjectURL(file);
-    img.src = fieldPhotoObjectUrl;
-    img.hidden = false;
-  });
+  const fieldPhotoInput = $("#field-photo");
+  if (fieldPhotoInput) {
+    fieldPhotoInput.addEventListener("change", (ev) => {
+      const file = ev.target.files && ev.target.files[0];
+      const img = $("#field-photo-preview");
+      if (!img) return;
+      stopCamera();
+      clearFieldCameraCapture();
+      revokeFieldPhotoUrl();
+      if (!file) {
+        img.hidden = true;
+        img.removeAttribute("src");
+        return;
+      }
+      fieldPhotoObjectUrl = URL.createObjectURL(file);
+      img.src = fieldPhotoObjectUrl;
+      img.hidden = false;
+    });
+  }
 
-  $("#field-camera-open").addEventListener("click", async () => {
+  const fieldCameraOpenBtn = $("#field-camera-open");
+  if (fieldCameraOpenBtn) {
+    fieldCameraOpenBtn.addEventListener("click", async () => {
     const panel = $("#field-camera-panel");
     const errEl = $("#field-camera-error");
+    if (!panel || !errEl) return;
     errEl.hidden = true;
     errEl.textContent = "";
     stopCamera();
     clearFieldCameraCapture();
     revokeFieldPhotoUrl();
-    $("#field-photo").value = "";
-    $("#field-photo-preview").hidden = true;
-    $("#field-photo-preview").removeAttribute("src");
+    if (fieldPhotoInput) fieldPhotoInput.value = "";
+    const fpp = $("#field-photo-preview");
+    if (fpp) {
+      fpp.hidden = true;
+      fpp.removeAttribute("src");
+    }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       errEl.textContent =
@@ -3678,9 +3709,11 @@
         });
       }
       const video = $("#field-camera-video");
-      video.srcObject = cameraStream;
-      panel.hidden = false;
-      await video.play().catch(() => {});
+      if (video) {
+        video.srcObject = cameraStream;
+        panel.hidden = false;
+        await video.play().catch(() => {});
+      }
     } catch (e) {
       releaseCamera();
       errEl.textContent =
@@ -3688,15 +3721,19 @@
       errEl.hidden = false;
       panel.hidden = false;
     }
-  });
+    });
+  }
 
-  $("#field-camera-capture").addEventListener("click", () => {
+  const fieldCameraCaptureBtn = $("#field-camera-capture");
+  if (fieldCameraCaptureBtn) {
+    fieldCameraCaptureBtn.addEventListener("click", () => {
     const video = $("#field-camera-video");
-    if (!cameraStream || !video.videoWidth) {
+    if (!cameraStream || !video || !video.videoWidth) {
       alert("Wait for the camera preview to appear, then capture.");
       return;
     }
     const canvas = $("#field-camera-canvas");
+    if (!canvas) return;
     const w = video.videoWidth;
     const h = video.videoHeight;
     canvas.width = w;
@@ -3707,19 +3744,24 @@
     releaseCamera();
     closeCameraPanel();
     showPhotoPreviewFromSrc(fieldCameraDataUrl);
-  });
+    });
+  }
 
-  $("#field-camera-cancel").addEventListener("click", () => {
-    stopCamera();
-  });
+  const fieldCameraCancelBtn = $("#field-camera-cancel");
+  if (fieldCameraCancelBtn) {
+    fieldCameraCancelBtn.addEventListener("click", () => {
+      stopCamera();
+    });
+  }
 
-  $("#field-form").addEventListener("submit", async (ev) => {
+  const fieldFormEl = $("#field-form");
+  if (fieldFormEl) fieldFormEl.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     if (sessionRole !== "field") return;
     const name = $("#field-name").value.trim();
     const phone = $("#field-phone").value.trim();
     const workDone = $('input[name="work_done"]:checked')?.value || "";
-    const file = $("#field-photo").files[0];
+    const file = fieldPhotoInput && fieldPhotoInput.files && fieldPhotoInput.files[0];
 
     if (!name || !phone || !workDone) {
       alert("Please fill name, phone, and work done.");
@@ -3778,7 +3820,8 @@
     renderDashboard();
   });
 
-  $("#survey-form").addEventListener("submit", (ev) => {
+  const surveyFormEl = $("#survey-form");
+  if (surveyFormEl) surveyFormEl.addEventListener("submit", (ev) => {
     ev.preventDefault();
     const employees = $("#survey-employees").value;
     const age = $("#survey-age").value;
@@ -3818,7 +3861,7 @@
     renderDashboard();
   });
 
-  $(".app").addEventListener("submit", async (ev) => {
+  if (appRoot) appRoot.addEventListener("submit", async (ev) => {
     const form = ev.target;
     if (!form || form.id !== "custom-portal-form") return;
     ev.preventDefault();
@@ -3949,21 +3992,27 @@
     renderDashboard();
   });
 
-  $("#login-toggle-pass").addEventListener("click", () => {
-    togglePasswordVisibility($("#login-toggle-pass"), $("#login-password"));
-  });
+  const loginTogglePass = $("#login-toggle-pass");
+  const loginPasswordEl = $("#login-password");
+  if (loginTogglePass && loginPasswordEl) {
+    loginTogglePass.addEventListener("click", () => {
+      togglePasswordVisibility(loginTogglePass, loginPasswordEl);
+    });
+  }
 
-  $("#admin-credentials-form").addEventListener("click", (ev) => {
+  const adminCredForm = $("#admin-credentials-form");
+  if (adminCredForm) adminCredForm.addEventListener("click", (ev) => {
     const t = ev.target;
-    const toggleBtn = t.closest && t.closest(".btn-toggle-pass");
-    if (toggleBtn && $("#admin-credentials-form").contains(toggleBtn)) {
+    const el = t && t.nodeType === 1 ? t : t && t.parentElement;
+    const toggleBtn = el && el.closest && el.closest(".btn-toggle-pass");
+    if (toggleBtn && adminCredForm.contains(toggleBtn)) {
       const wrap = toggleBtn.closest(".password-with-toggle");
       const input = wrap && wrap.querySelector(".admin-cred-pass");
       if (input) togglePasswordVisibility(toggleBtn, input);
       return;
     }
-    if (t.matches(".admin-add-cred")) {
-      const role = t.getAttribute("data-add-cred");
+    if (el && el.matches && el.matches(".admin-add-cred")) {
+      const role = el.getAttribute("data-add-cred");
       if (!role || !ROLE_KEYS.includes(role)) return;
       const container = document.getElementById(`admin-accounts-${role}`);
       if (!container) return;
@@ -3971,8 +4020,8 @@
       refreshRemoveButtonsVisibility(container);
       return;
     }
-    if (t.matches(".admin-cred-remove")) {
-      const row = t.closest(".admin-cred-row");
+    if (el && el.matches && el.matches(".admin-cred-remove")) {
+      const row = el.closest(".admin-cred-row");
       const container = row && row.parentElement;
       if (!row || !container || !container.classList.contains("admin-accounts")) return;
       row.remove();
@@ -3987,7 +4036,7 @@
   const adminCredTabs = $("#admin-cred-tabs");
   if (adminCredTabs) {
     adminCredTabs.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-admin-cred-tab]");
+      const btn = closestFromEvent(ev, "[data-admin-cred-tab]");
       if (!btn || !adminCredTabs.contains(btn)) return;
       const r = btn.getAttribute("data-admin-cred-tab");
       if (ROLE_KEYS.includes(r)) setAdminCredTab(r);
@@ -3997,7 +4046,7 @@
   const adminSectionTabs = $("#admin-section-tabs");
   if (adminSectionTabs) {
     adminSectionTabs.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-admin-section]");
+      const btn = closestFromEvent(ev, "[data-admin-section]");
       if (!btn || !adminSectionTabs.contains(btn)) return;
       const s = btn.getAttribute("data-admin-section");
       setAdminSection(s);
@@ -4012,9 +4061,11 @@
       const errMsg = validateCredentialsForRole(role, list);
       if (errMsg) {
         const err = $("#admin-msg");
-        err.className = "error-banner";
-        err.textContent = errMsg;
-        err.hidden = false;
+        if (err) {
+          err.className = "error-banner";
+          err.textContent = errMsg;
+          err.hidden = false;
+        }
         return;
       }
       state.credentials[role] = list.map((c) => ({
@@ -4025,9 +4076,11 @@
       renderAdminCredentials();
       setAdminCredTab(role);
       const msg = $("#admin-msg");
-      msg.className = "success-banner";
-      msg.textContent = `Saved logins for “${ROLE_LABELS[role] || role}”.`;
-      msg.hidden = false;
+      if (msg) {
+        msg.className = "success-banner";
+        msg.textContent = `Saved logins for “${ROLE_LABELS[role] || role}”.`;
+        msg.hidden = false;
+      }
     });
   }
 
@@ -4109,7 +4162,7 @@
   const adminCustomTabs = $("#admin-custom-tabs");
   if (adminCustomTabs) {
     adminCustomTabs.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-admin-custom-tab]");
+      const btn = closestFromEvent(ev, "[data-admin-custom-tab]");
       if (!btn || !adminCustomTabs.contains(btn)) return;
       const id = btn.getAttribute("data-admin-custom-tab");
       if (id) setAdminCustomTab(id);
@@ -4200,7 +4253,7 @@
   const dashTabs = $("#dashboard-portal-tabs");
   if (dashTabs) {
     dashTabs.addEventListener("click", (ev) => {
-      const btn = ev.target.closest("[data-dash-tab]");
+      const btn = closestFromEvent(ev, "[data-dash-tab]");
       if (!btn || !dashTabs.contains(btn)) return;
       const f = btn.getAttribute("data-dash-tab");
       if (!["all", "field", "survey"].includes(f) && !(f && f.startsWith("cp_"))) {
