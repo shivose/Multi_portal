@@ -285,7 +285,12 @@
               password: adminRaw.password != null ? String(adminRaw.password) : "",
             }
           : base.credentials.admin;
-      const rawPortals = Array.isArray(parsed.customPortals) ? parsed.customPortals : [];
+      let rawPortals = [];
+      if (Array.isArray(parsed.customPortals)) {
+        rawPortals = parsed.customPortals;
+      } else if (parsed.customPortals && typeof parsed.customPortals === "object") {
+        rawPortals = Object.values(parsed.customPortals);
+      }
       const customPortals = rawPortals.map(normalizeCustomPortal).filter(Boolean);
       const rawEntries =
         parsed.customPortalEntries && typeof parsed.customPortalEntries === "object"
@@ -341,7 +346,10 @@
     }
     if (!localParsed || typeof localParsed !== "object") return serverNorm;
 
-    const localPortals = Array.isArray(localParsed.customPortals) ? localParsed.customPortals : [];
+    let localPortals = [];
+    const lp = localParsed.customPortals;
+    if (Array.isArray(lp)) localPortals = lp;
+    else if (lp && typeof lp === "object") localPortals = Object.values(lp);
     if (localPortals.length === 0) return serverNorm;
 
     const list = Array.isArray(serverNorm.customPortals) ? serverNorm.customPortals.slice() : [];
@@ -795,7 +803,14 @@
   };
 
   function getCustomPortalsList() {
-    return Array.isArray(state.customPortals) ? state.customPortals : [];
+    if (!state || typeof state !== "object") return [];
+    const raw = state.customPortals;
+    if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
+      state.customPortals = Object.values(raw);
+    } else if (!Array.isArray(raw)) {
+      state.customPortals = [];
+    }
+    return state.customPortals.filter((p) => p && p.id != null && String(p.id).trim());
   }
 
   /** Resolves a portal whether `id` was stored as string or number (JSON) or with stray whitespace. */
@@ -1717,8 +1732,10 @@
     const toStr = dashboardAppliedDateTo;
     const custom = {};
     getCustomPortalsList().forEach((p) => {
-      const list = (state.customPortalEntries && state.customPortalEntries[p.id]) || [];
-      custom[p.id] = filterCustomPortalEntriesByDate(list, fromStr, toStr);
+      const pid = String(p.id).trim();
+      const list =
+        (state.customPortalEntries && (state.customPortalEntries[pid] ?? state.customPortalEntries[p.id])) || [];
+      custom[pid] = filterCustomPortalEntriesByDate(list, fromStr, toStr);
     });
     return {
       field: filterFieldByDateRange(state.fieldEntries || [], fromStr, toStr),
@@ -2247,20 +2264,23 @@
   }
 
   function syncDashboardCustomTabs() {
-    const tabs = $("#dashboard-portal-tabs");
+    const tabs = document.getElementById("dashboard-portal-tabs");
     if (!tabs) return;
-    tabs.querySelectorAll("[data-dash-tab^='cp_']").forEach((b) => b.remove());
+    tabs.querySelectorAll("button.dash-portal-tab-custom").forEach((b) => b.remove());
+    const fieldBtn = tabs.querySelector('[data-dash-tab="field"]');
     getCustomPortalsList().forEach((p) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "nav-btn";
+      btn.className = "nav-btn dash-portal-tab-custom";
       btn.setAttribute("role", "tab");
-      btn.setAttribute("data-dash-tab", portalRoleKey(p.id));
+      const roleKey = portalRoleKey(p.id);
+      btn.setAttribute("data-dash-tab", roleKey);
       btn.setAttribute("aria-selected", "false");
-      const t = p.title;
+      const t = p.title != null ? String(p.title) : "Portal";
       btn.textContent = t.length > 26 ? t.slice(0, 24) + "…" : t;
       btn.title = t;
-      tabs.appendChild(btn);
+      if (fieldBtn) tabs.insertBefore(btn, fieldBtn);
+      else tabs.appendChild(btn);
     });
   }
 
@@ -2269,7 +2289,8 @@
     if (!grid) return;
     grid.querySelectorAll("[data-dash-stat-custom]").forEach((el) => el.remove());
     getCustomPortalsList().forEach((p) => {
-      const n = (filteredCustom[p.id] || []).length;
+      const pid = String(p.id).trim();
+      const n = (filteredCustom[pid] || []).length;
       const div = document.createElement("div");
       div.className = "stat";
       div.setAttribute("data-dash-for", portalRoleKey(p.id));
@@ -2292,7 +2313,8 @@
     if (!wrap) return;
     wrap.innerHTML = "";
     getCustomPortalsList().forEach((p) => {
-      const entries = filteredCustom[p.id] || [];
+      const pid = String(p.id).trim();
+      const entries = filteredCustom[pid] || [];
       const card = document.createElement("div");
       card.className = "card dash-table-card dash-custom-panel";
       card.style.marginBottom = "1.25rem";
@@ -2399,7 +2421,8 @@
         portals.forEach((p) => {
           const short = p.title.length > 18 ? p.title.slice(0, 16) + "…" : p.title;
           labels.push(short);
-          data.push((customByPortal[p.id] || []).length);
+          const pid = String(p.id).trim();
+          data.push((customByPortal[pid] || []).length);
           bg.push(colors[ci % colors.length]);
           ci += 1;
         });
