@@ -768,7 +768,7 @@
         </div>
         <div class="card dash-table-card" data-dash-for="reminders">
           <h2>Upcoming reminders</h2>
-          <p class="muted">Next 20 by date (from reminders login). “Emailed” appears after a notification was sent (requires EmailJS setup in Admin).</p>
+          <p class="muted">Next 20 by date (from reminders login).</p>
           <div class="table-wrap">
             <table>
               <thead>
@@ -777,7 +777,6 @@
                   <th>Title</th>
                   <th>When</th>
                   <th>Status</th>
-                  <th>Emailed</th>
                   <th>Notes</th>
                 </tr>
               </thead>
@@ -829,9 +828,7 @@
         <div class="card" style="margin-bottom: 1.25rem">
           <h2>Add or edit reminder</h2>
           <p class="muted">
-            Set a title, when it should trigger, and optional notes. Stored on this device. When the time is reached, an email is sent if Admin has configured
-            <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer">EmailJS</a>
-            — keep this site open in a tab while logged in so the check can run. Use <strong>View history</strong> to see all reminders; only the one you added most recently can be edited.
+            Set a title, when it should trigger, and optional notes. Reminders are stored with your portal data. Use <strong>View history</strong> to see all reminders; only the one you added most recently can be edited.
           </p>
           <form id="reminder-form" class="form" style="margin-top: 1rem" novalidate>
             <label class="field">
@@ -1124,53 +1121,10 @@
           </div>
         </div>
         </div>
-
-        <div class="card admin-email-card">
-          <h2>Reminder emails (EmailJS)</h2>
-          <p class="muted">
-            Browsers cannot send mail by themselves. Use a free
-            <a href="https://www.emailjs.com/" target="_blank" rel="noopener noreferrer">EmailJS</a>
-            account: add an email service, create an email template with variables
-            <code>to_email</code>, <code>title</code>, <code>due</code>, <code>notes</code>, and
-            <code>message</code> (put <code>{{message}}</code> in the body). Set the template “To” field to
-            <code>{{to_email}}</code>. Paste your IDs below.
-          </p>
-          <div id="admin-email-msg" class="success-banner" hidden></div>
-          <form id="admin-email-form" class="form" style="margin-top: 1rem">
-            <div class="field checkbox-field">
-              <span class="field-label">Send email when a reminder time is reached</span>
-              <label class="check-row">
-                <input type="checkbox" id="email-enabled" />
-                <span>Enabled</span>
-              </label>
-            </div>
-            <label class="field">
-              <span class="field-label">Recipient email</span>
-              <input type="email" id="email-to" autocomplete="email" placeholder="you@example.com" />
-            </label>
-            <label class="field">
-              <span class="field-label">EmailJS public key</span>
-              <input type="text" id="email-public-key" autocomplete="off" placeholder="xxxxxxxxxxxx" />
-            </label>
-            <label class="field">
-              <span class="field-label">Service ID</span>
-              <input type="text" id="email-service-id" autocomplete="off" />
-            </label>
-            <label class="field">
-              <span class="field-label">Template ID</span>
-              <input type="text" id="email-template-id" autocomplete="off" />
-            </label>
-            <div class="photo-source-row">
-              <button type="submit" class="btn primary">Save email settings</button>
-              <button type="button" class="btn ghost" id="email-test-btn">Send test email</button>
-            </div>
-          </form>
-        </div>
       </main>
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script>
     if ("serviceWorker" in navigator) {

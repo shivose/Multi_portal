@@ -317,11 +317,6 @@ body {
   color: #b91c1c;
 }
 
-.reminder-badge.is-sent {
-  background: rgba(61, 107, 71, 0.14);
-  color: var(--success);
-}
-
 #custom-portal-btn-reminders.is-reminder-due {
   border-color: rgba(252, 211, 77, 0.55);
   color: var(--warn);

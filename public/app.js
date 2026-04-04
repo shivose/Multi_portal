@@ -124,13 +124,6 @@
     processEntries: [],
     reminders: [],
     calendarTasks: [],
-    emailSettings: {
-      enabled: false,
-      toEmail: "",
-      publicKey: "",
-      serviceId: "",
-      templateId: "",
-    },
     customPortals: [],
     customPortalEntries: {},
     workAssignments: [],
@@ -357,16 +350,11 @@
         reminders: Array.isArray(parsed.reminders) ? parsed.reminders : base.reminders,
         calendarTasks,
         workAssignments,
-        emailSettings: {
-          ...base.emailSettings,
-          ...(parsed.emailSettings && typeof parsed.emailSettings === "object"
-            ? parsed.emailSettings
-            : {}),
-        },
         customPortals,
         customPortalEntries,
       };
       delete next.customPortalFollowUpNotified;
+      delete next.emailSettings;
       return next;
     } catch {
       return defaultState();
@@ -691,7 +679,6 @@
   let adminCredActiveRole = "field";
   /** Which custom portal tab is selected in admin (`null` when creating a new portal). */
   let adminCustomActivePortalId = null;
-  let reminderEmailInterval = null;
   /** Roles this sign-in may open; used for “Switch portal” when length > 1 */
   let sessionPortalOptions = null;
   let rolePickerMode = "login";
@@ -1385,15 +1372,9 @@
         setAdminCredTab("field");
         renderAdminCustomPortalsList();
         setAdminSection("credentials");
-        bindAdminEmailForm();
         const am = $("#admin-msg");
         am.hidden = true;
         am.textContent = "";
-        const aem = $("#admin-email-msg");
-        if (aem) {
-          aem.hidden = true;
-          aem.textContent = "";
-        }
       }
     }
     if (role === "admin") {
@@ -1492,7 +1473,6 @@
           return;
         }
         sessionRole = role;
-        startReminderEmailScheduler();
         enterPortal(role);
       });
     });
@@ -1503,72 +1483,6 @@
     if (tsInterval) {
       clearInterval(tsInterval);
       tsInterval = null;
-    }
-  }
-
-  function stopReminderEmailScheduler() {
-    if (reminderEmailInterval) {
-      clearInterval(reminderEmailInterval);
-      reminderEmailInterval = null;
-    }
-  }
-
-  function startReminderEmailScheduler() {
-    stopReminderEmailScheduler();
-    reminderEmailInterval = setInterval(() => {
-      checkDueRemindersEmail().catch(() => {});
-    }, 45000);
-    checkDueRemindersEmail().catch(() => {});
-  }
-
-  async function sendReminderViaEmailjs(reminder, settings) {
-    const emailjs = window.emailjs;
-    if (!emailjs || typeof emailjs.init !== "function" || typeof emailjs.send !== "function") {
-      throw new Error("EmailJS not loaded");
-    }
-    emailjs.init({ publicKey: settings.publicKey.trim() });
-    const dueStr = formatReminderWhen(new Date(reminder.due));
-    const message = `Reminder\n\nTitle: ${reminder.title}\nWhen: ${dueStr}\n\nNotes:\n${reminder.notes || "(none)"}`;
-    await emailjs.send(settings.serviceId.trim(), settings.templateId.trim(), {
-      to_email: settings.toEmail.trim(),
-      title: reminder.title,
-      notes: reminder.notes || "",
-      due: dueStr,
-      message,
-      subject_line: `Reminder: ${reminder.title}`,
-    });
-  }
-
-  async function checkDueRemindersEmail() {
-    if (!sessionRole) return;
-    const es = state.emailSettings;
-    if (!es || !es.enabled) return;
-    const to = (es.toEmail || "").trim();
-    const pk = (es.publicKey || "").trim();
-    const sid = (es.serviceId || "").trim();
-    const tid = (es.templateId || "").trim();
-    if (!to || !pk || !sid || !tid) return;
-
-    const now = Date.now();
-    const list = state.reminders || [];
-    let changed = false;
-
-    for (const r of list) {
-      if (r.emailNotifiedAt) continue;
-      if (new Date(r.due).getTime() > now) continue;
-      try {
-        await sendReminderViaEmailjs(r, es);
-        r.emailNotifiedAt = new Date().toISOString();
-        changed = true;
-      } catch (err) {
-        console.warn("Reminder email failed:", err);
-      }
-    }
-
-    if (changed) {
-      saveState(state);
-      renderRemindersView();
-      renderDashboard();
     }
   }
 
@@ -1684,7 +1598,6 @@
       sessionPortalOptions = null;
       return false;
     }
-    startReminderEmailScheduler();
     enterPortal(role);
     return true;
   }
@@ -1744,7 +1657,6 @@
     sessionUsername = null;
     sessionPortalOptions = null;
     stopTsTick();
-    stopReminderEmailScheduler();
     stopCamera();
     stopCustomPortalCamera();
     resetCustomPortalImageState();
@@ -2978,7 +2890,6 @@
             <td>${escapeHtml(r.title)}</td>
             <td><small>${escapeHtml(formatReminderWhen(due))}</small></td>
             <td>${escapeHtml(status)}</td>
-            <td>${r.emailNotifiedAt ? "Yes" : "—"}</td>
             <td><small>${escapeHtml(r.notes || "—")}</small></td>
           `;
           remBody.appendChild(tr);
@@ -3913,16 +3824,13 @@
         : due.getTime() - now < 864e5
           ? '<span class="reminder-badge is-soon">Soon</span>'
           : '<span class="reminder-badge">Scheduled</span>';
-      const emailBadge = r.emailNotifiedAt
-        ? '<span class="reminder-badge is-sent">Emailed</span>'
-        : "";
       const isLatest = latest && r.id === latest.id;
       const editBtn = isLatest
         ? `<button type="button" class="btn ghost reminder-edit" data-id="${escapeHtml(r.id)}">Edit</button>`
         : "";
       row.innerHTML = `
         <div class="reminder-row-main">
-          <div class="reminder-title">${escapeHtml(r.title)} ${badge}${emailBadge}</div>
+          <div class="reminder-title">${escapeHtml(r.title)} ${badge}</div>
           <div class="reminder-meta">${escapeHtml(formatReminderWhen(due))}</div>
           ${r.notes ? `<div class="reminder-notes">${escapeHtml(r.notes)}</div>` : ""}
         </div>
@@ -4165,15 +4073,6 @@
       }
     }
     return null;
-  }
-
-  function bindAdminEmailForm() {
-    const es = state.emailSettings || defaultState().emailSettings;
-    $("#email-enabled").checked = !!es.enabled;
-    $("#email-to").value = es.toEmail || "";
-    $("#email-public-key").value = es.publicKey || "";
-    $("#email-service-id").value = es.serviceId || "";
-    $("#email-template-id").value = es.templateId || "";
   }
 
   function setAdminCustomMsg(text, kind) {
@@ -4467,7 +4366,6 @@
     if (matches.length === 1) {
       sessionPortalOptions = matches.slice();
       sessionRole = matches[0];
-      startReminderEmailScheduler();
       enterPortal(matches[0]);
       return;
     }
@@ -4951,7 +4849,6 @@
     if (rsb) rsb.textContent = "Save reminder";
     renderRemindersView();
     renderDashboard();
-    checkDueRemindersEmail().catch(() => {});
   });
 
   $("#survey-form").addEventListener("submit", (ev) => {
@@ -5200,7 +5097,6 @@
     renderCustomPortalHistory(portal);
     setCustomPortalSubView("form");
     renderDashboard();
-    checkDueRemindersEmail().catch(() => {});
   });
 
   $("#login-toggle-pass").addEventListener("click", () => {
@@ -5284,70 +5180,6 @@
       msg.hidden = false;
     });
   }
-
-  $("#admin-email-form").addEventListener("submit", (ev) => {
-    ev.preventDefault();
-    const enabled = $("#email-enabled").checked;
-    const toEmail = $("#email-to").value.trim();
-    const publicKey = $("#email-public-key").value.trim();
-    const serviceId = $("#email-service-id").value.trim();
-    const templateId = $("#email-template-id").value.trim();
-    const msgEl = $("#admin-email-msg");
-    if (enabled && (!toEmail || !publicKey || !serviceId || !templateId)) {
-      msgEl.className = "error-banner";
-      msgEl.textContent = "Enable requires recipient email, public key, service ID, and template ID.";
-      msgEl.hidden = false;
-      return;
-    }
-    state.emailSettings = {
-      enabled,
-      toEmail,
-      publicKey,
-      serviceId,
-      templateId,
-    };
-    saveState(state);
-    msgEl.className = "success-banner";
-    msgEl.textContent = "Email settings saved.";
-    msgEl.hidden = false;
-  });
-
-  $("#email-test-btn").addEventListener("click", async () => {
-    const msgEl = $("#admin-email-msg");
-    const toEmail = $("#email-to").value.trim();
-    const publicKey = $("#email-public-key").value.trim();
-    const serviceId = $("#email-service-id").value.trim();
-    const templateId = $("#email-template-id").value.trim();
-    if (!toEmail || !publicKey || !serviceId || !templateId) {
-      msgEl.className = "error-banner";
-      msgEl.textContent = "Fill all EmailJS fields before testing.";
-      msgEl.hidden = false;
-      return;
-    }
-    const testReminder = {
-      title: "Test reminder",
-      due: new Date().toISOString(),
-      notes: "If you received this, EmailJS is set up correctly.",
-    };
-    try {
-      await sendReminderViaEmailjs(testReminder, {
-        toEmail,
-        publicKey,
-        serviceId,
-        templateId,
-      });
-      msgEl.className = "success-banner";
-      msgEl.textContent = "Test email sent. Check the inbox (and spam).";
-      msgEl.hidden = false;
-    } catch (err) {
-      msgEl.className = "error-banner";
-      const detail =
-        err && (err.text || err.message) ? String(err.text || err.message) : "Send failed.";
-      msgEl.textContent = detail + " Check the EmailJS template and browser console.";
-      msgEl.hidden = false;
-      console.warn(err);
-    }
-  });
 
   const adminCustomNew = $("#admin-custom-new");
   if (adminCustomNew) {
@@ -5507,7 +5339,6 @@
 
   document.addEventListener("visibilitychange", () => {
     if (sessionRole && document.visibilityState === "visible") {
-      checkDueRemindersEmail().catch(() => {});
       if (typeof sessionRole === "string" && sessionRole.startsWith("cp_")) {
         syncCustomPortalRemindersButton();
         const remP = $("#custom-portal-panel-reminders");

@@ -17,7 +17,7 @@ The site is installable as a PWA:
 
 - **`public/manifest.webmanifest`** — name, theme, icons, `standalone` display.
 - **`public/sw.js`** — service worker that precaches the app shell (`index.html`, `styles.css`, `app.js`, manifest, icons). **`/api/*` is never cached** so data sync always hits the network when online.
-- **Offline:** you can open the last cached shell without a network; Chart.js / EmailJS load from CDN and need connectivity. **`PORTAL_API_BASE`** must point at your API if the HTML is not served from the same origin.
+- **Offline:** you can open the last cached shell without a network; Chart.js loads from CDN and needs connectivity. **`PORTAL_API_BASE`** must point at your API if the HTML is not served from the same origin.
 
 **Install on a phone**
 
