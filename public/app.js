@@ -884,55 +884,79 @@
     admin: $("#view-admin"),
   };
 
+  /** Read custom portals + entries from the saved JSON in localStorage (same document as full app state). */
+  function parseStoredStateCustomPortalsSlice() {
+    try {
+      const disk = localStorage.getItem(STORAGE_KEY);
+      if (!disk) return null;
+      const j = JSON.parse(disk);
+      if (!j || typeof j !== "object") return null;
+      const portals = coerceRawCustomPortalsToArray(j.customPortals)
+        .map(normalizeCustomPortal)
+        .filter(Boolean);
+      const entries =
+        j.customPortalEntries && typeof j.customPortalEntries === "object" ? j.customPortalEntries : {};
+      return { portals, entries };
+    } catch (e) {
+      return null;
+    }
+  }
+
   /**
-   * Single source for “which custom portals exist”: start from in-memory `state`, then apply every portal id
-   * found in localStorage (disk wins on id collision — that is what Admin saved in this browser).
-   * Writes merged portals (and any missing entry arrays from disk) back onto `state` so charts/tables match.
+   * Custom portals visible to Manager (and Admin): **localStorage wins**. RAM cannot hide what Admin saved.
+   * In-memory `state` only adds portal ids that are not yet on disk (e.g. save not flushed).
    */
   function getCustomPortalsList() {
     if (!state || typeof state !== "object") return [];
     const byId = new Map();
-    const addFromStateOnly = (item) => {
+
+    const slice = parseStoredStateCustomPortalsSlice();
+    if (slice) {
+      slice.portals.forEach((p) => {
+        const id = String(p.id).trim();
+        if (id) byId.set(id, p);
+      });
+      if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
+        state.customPortalEntries = {};
+      }
+      for (const id of Object.keys(slice.entries)) {
+        const inc = slice.entries[id];
+        if (!Array.isArray(inc) || inc.length === 0) continue;
+        const cur = state.customPortalEntries[id];
+        if (!Array.isArray(cur) || cur.length === 0) {
+          state.customPortalEntries[id] = inc.slice();
+        }
+      }
+    } else {
+      const sc = state.customPortals;
+      if (Array.isArray(sc)) {
+        sc.forEach((item) => {
+          const p = normalizeCustomPortal(item);
+          if (!p) return;
+          const id = String(p.id).trim();
+          if (id) byId.set(id, p);
+        });
+      } else if (sc != null && typeof sc === "object") {
+        Object.values(sc).forEach((item) => {
+          const p = normalizeCustomPortal(item);
+          if (!p) return;
+          const id = String(p.id).trim();
+          if (id) byId.set(id, p);
+        });
+      }
+    }
+
+    const addFromStateIfNewId = (item) => {
       const p = normalizeCustomPortal(item);
       if (!p) return;
       const id = String(p.id).trim();
-      if (!id) return;
-      if (!byId.has(id)) byId.set(id, p);
+      if (!id || byId.has(id)) return;
+      byId.set(id, p);
     };
     const sc = state.customPortals;
-    if (Array.isArray(sc)) sc.forEach(addFromStateOnly);
-    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addFromStateOnly);
-    try {
-      const disk = localStorage.getItem(STORAGE_KEY);
-      if (disk) {
-        const j = JSON.parse(disk);
-        if (j && typeof j === "object") {
-          coerceRawCustomPortalsToArray(j.customPortals).forEach((item) => {
-            const p = normalizeCustomPortal(item);
-            if (!p) return;
-            const id = String(p.id).trim();
-            if (!id) return;
-            byId.set(id, p);
-          });
-          if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
-            state.customPortalEntries = {};
-          }
-          const ent =
-            j.customPortalEntries && typeof j.customPortalEntries === "object"
-              ? j.customPortalEntries
-              : {};
-          for (const id of byId.keys()) {
-            const inc = ent[id];
-            const cur = state.customPortalEntries[id];
-            if (Array.isArray(inc) && (!Array.isArray(cur) || cur.length === 0)) {
-              state.customPortalEntries[id] = inc.slice();
-            }
-          }
-        }
-      }
-    } catch (e) {
-      /* ignore corrupt LS */
-    }
+    if (Array.isArray(sc)) sc.forEach(addFromStateIfNewId);
+    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addFromStateIfNewId);
+
     const out = Array.from(byId.values());
     state.customPortals = out;
     return out;
