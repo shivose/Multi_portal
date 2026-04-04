@@ -1,5 +1,5 @@
 /* Multi Login Portal — bump CACHE when you change shell assets */
-const CACHE = "multi-portal-shell-v2";
+const CACHE = "multi-portal-shell-v3";
 const PRECACHE_URLS = [
   "/",
   "/index.html",
@@ -44,6 +44,23 @@ self.addEventListener("fetch", (event) => {
 
   if (url.pathname.startsWith("/api/")) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  /* Cache-first would keep stale app.js forever after deploy; prefer network for shell code. */
+  const shellPath = url.pathname;
+  if (shellPath === "/app.js" || shellPath === "/styles.css") {
+    event.respondWith(
+      fetch(request, { cache: "no-cache" })
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.ok) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE).then((cache) => cache.put(request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 
