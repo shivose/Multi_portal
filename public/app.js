@@ -344,9 +344,10 @@
   }
 
   /**
-   * After a server pull, keep custom portals that exist only in localStorage.
-   * Otherwise a stale or empty server document wipes portals the admin just created on this device
-   * (push may still be in flight, or another tab saved before the server caught up).
+   * Merge custom portals + submission rows from a local snapshot (localStorage string or object)
+   * into a target state object. Union by portal id; when the same id exists on both sides, prefer
+   * the copy with more form fields so Admin definitions on this browser beat an empty/stale server row.
+   * Also copies customPortalEntries from local when the server side is missing or empty.
    */
   function mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw) {
     if (!serverNorm || typeof serverNorm !== "object") return serverNorm;
@@ -361,37 +362,61 @@
     if (!localParsed || typeof localParsed !== "object") return serverNorm;
 
     const localPortals = coerceRawCustomPortalsToArray(localParsed.customPortals);
-    if (localPortals.length === 0) return serverNorm;
+    const localEntries =
+      localParsed.customPortalEntries && typeof localParsed.customPortalEntries === "object"
+        ? localParsed.customPortalEntries
+        : {};
 
-    const list = Array.isArray(serverNorm.customPortals) ? serverNorm.customPortals.slice() : [];
-    const serverIds = new Set(list.map((p) => String(p && p.id).trim()).filter(Boolean));
+    const list = coerceRawCustomPortalsToArray(serverNorm.customPortals)
+      .map((p) => normalizeCustomPortal(p))
+      .filter(Boolean);
     const byId = new Map(list.map((p) => [String(p.id).trim(), p]));
-    const addedFromLocal = [];
+
+    function portalShouldPreferLocal(existing, incoming) {
+      if (!existing) return true;
+      const ex = (existing.fields || []).length;
+      const inc = (incoming.fields || []).length;
+      if (inc > ex) return true;
+      if (ex === 0 && inc > 0) return true;
+      return false;
+    }
 
     for (const raw of localPortals) {
       const np = normalizeCustomPortal(raw);
       if (!np) continue;
       const id = String(np.id).trim();
-      if (!id || serverIds.has(id)) continue;
-      if (!byId.has(id)) {
+      if (!id) continue;
+      const ex = byId.get(id);
+      if (!ex || portalShouldPreferLocal(ex, np)) {
         byId.set(id, np);
-        addedFromLocal.push(id);
       }
     }
-    if (addedFromLocal.length === 0) return serverNorm;
 
     serverNorm.customPortals = Array.from(byId.values());
 
-    const localEntries =
-      localParsed.customPortalEntries && typeof localParsed.customPortalEntries === "object"
-        ? localParsed.customPortalEntries
-        : {};
     const mergedEntries = { ...(serverNorm.customPortalEntries || {}) };
-    for (const id of addedFromLocal) {
-      if (Array.isArray(localEntries[id])) mergedEntries[id] = localEntries[id];
+    for (const id of Object.keys(localEntries)) {
+      const loc = localEntries[id];
+      if (!Array.isArray(loc) || loc.length === 0) continue;
+      const srv = mergedEntries[id];
+      if (!Array.isArray(srv) || srv.length === 0) {
+        mergedEntries[id] = loc.slice();
+      }
     }
     serverNorm.customPortalEntries = mergedEntries;
     return serverNorm;
+  }
+
+  /** Re-read custom portals from localStorage into live `state` (Manager/Admin same-browser fix). */
+  function applyLatestCustomPortalsFromLocalStorageToState() {
+    let raw = null;
+    try {
+      raw = localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      return;
+    }
+    if (!raw || raw === "") return;
+    mergeLocalOnlyCustomPortalsIntoServerState(state, raw);
   }
 
   function loadState() {
@@ -774,6 +799,15 @@
     // Cross-tab updates (manager saves → assignee re-renders).
     window.addEventListener("storage", (ev) => {
       if (ev && ev.key === STORAGE_KEY) externalStateRefreshAssignedWorkOnly();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      if (isDashboardManagerRole() && (sessionRole === "dashboard" || sessionRole === "supervisor")) {
+        applyLatestCustomPortalsFromLocalStorageToState();
+        getCustomPortalsList();
+        if (views.dashboard && !views.dashboard.hidden) renderDashboard();
+      }
     });
 
     // Fallback poll (in case storage events are missed).
@@ -1343,6 +1377,7 @@
       startTsTick("#survey-timestamp");
     } else if (role === "dashboard" || role === "supervisor") {
       stopTsTick();
+      applyLatestCustomPortalsFromLocalStorageToState();
       dashboardFilter = "all";
       setDashboardTabsUI("all");
       const df = $("#dash-date-from");
@@ -1355,9 +1390,9 @@
       if (pt) pt.value = dashboardAppliedDateTo || "";
       const drb = $("#dashboard-role-badge");
       if (drb) drb.textContent = role === "supervisor" ? "Supervisor" : "Manager";
+      setDashboardManagerSection("analytics");
       showView("dashboard");
       renderDashboard();
-      setDashboardManagerSection("analytics");
       renderManagerAssignWorkUI();
       renderAssigneeWorkMount("dashboard-assigned-work", role, true);
     } else {
@@ -2640,6 +2675,7 @@
   }
 
   function renderDashboard() {
+    if (isDashboardManagerRole()) applyLatestCustomPortalsFromLocalStorageToState();
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     renderManagerCustomPortalsRail();
