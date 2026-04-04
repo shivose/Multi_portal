@@ -29,12 +29,15 @@
   const ROLE_PICKER_ORDER = ["field", "survey", "dashboard", "supervisor", "admin"];
 
   function portalRoleKey(portalId) {
-    return "cp_" + portalId;
+    const s = portalId == null ? "" : String(portalId).trim();
+    return "cp_" + s;
   }
 
   function parsePortalIdFromRole(role) {
-    if (typeof role !== "string" || !role.startsWith("cp_")) return null;
-    const id = role.slice(3);
+    if (typeof role !== "string") return null;
+    const r = role.trim();
+    if (!r.toLowerCase().startsWith("cp_")) return null;
+    const id = r.slice(3).trim();
     return id || null;
   }
 
@@ -94,7 +97,19 @@
       f && f.id
         ? String(f.id)
         : portalNewId();
-    const label = f && f.label != null ? String(f.label).trim() : "";
+    const labelRaw =
+      f && f.label != null
+        ? String(f.label).trim()
+        : f && f.question != null
+          ? String(f.question).trim()
+          : f && f.text != null
+            ? String(f.text).trim()
+            : f && f.title != null
+              ? String(f.title).trim()
+              : f && f.name != null
+                ? String(f.name).trim()
+                : "";
+    const label = labelRaw;
     const t = f && f.type;
     const type = ["text", "textarea", "number", "select", "buttons", "image"].includes(t) ? t : "text";
     const required = !!(f && f.required);
@@ -114,10 +129,16 @@
 
   function normalizeCustomPortal(p) {
     if (!p || typeof p !== "object") return null;
-    const id = p.id ? String(p.id) : portalNewId();
+    const rawId = p.id != null ? String(p.id).trim() : "";
+    const id = rawId || portalNewId();
     const title =
       p.title != null && String(p.title).trim() ? String(p.title).trim() : "Untitled portal";
-    const rawFields = Array.isArray(p.fields) ? p.fields : [];
+    let rawFields = [];
+    if (Array.isArray(p.fields)) {
+      rawFields = p.fields;
+    } else if (p.fields && typeof p.fields === "object") {
+      rawFields = Object.values(p.fields);
+    }
     const fields = rawFields.map(normalizeCustomField).filter((f) => f.label);
     const creds = normalizeRoleCredentialList(p.credentials, []);
     const followUpReminderEnabled = !!(p && p.followUpReminderEnabled);
@@ -696,6 +717,14 @@
     return Array.isArray(state.customPortals) ? state.customPortals : [];
   }
 
+  /** Resolves a portal whether `id` was stored as string or number (JSON) or with stray whitespace. */
+  function findCustomPortalById(portalId) {
+    if (portalId == null) return null;
+    const want = String(portalId).trim();
+    if (!want) return null;
+    return getCustomPortalsList().find((x) => String(x.id).trim() === want) || null;
+  }
+
   function getRolePickerOrder() {
     const mids = getCustomPortalsList().map((p) => portalRoleKey(p.id));
     return ["field", "survey", "dashboard", "supervisor", ...mids, "admin"];
@@ -704,7 +733,7 @@
   function getRoleLabel(role) {
     const pid = parsePortalIdFromRole(role);
     if (pid) {
-      const p = getCustomPortalsList().find((x) => x.id === pid);
+      const p = findCustomPortalById(pid);
       return p ? p.title : "Custom portal";
     }
     return ROLE_LABELS[role] || role;
@@ -1084,7 +1113,7 @@
     const form = $("#custom-portal-form");
     if (!btn || !form) return;
     const portalId = form.dataset.portalId;
-    const portal = portalId && getCustomPortalsList().find((p) => p.id === portalId);
+    const portal = portalId && findCustomPortalById(portalId);
     btn.classList.toggle("is-reminder-due", !!(portal && isCustomPortalNextEntryDue(portal)));
   }
 
@@ -1095,7 +1124,7 @@
     const assignP = $("#custom-portal-panel-assigned");
     const form = $("#custom-portal-form");
     const portalId = form && form.dataset.portalId;
-    const portal = portalId && getCustomPortalsList().find((x) => x.id === portalId);
+    const portal = portalId && findCustomPortalById(portalId);
     const btnV = $("#custom-portal-btn-view-history");
     const btnR = $("#custom-portal-btn-reminders");
     const btnA = $("#custom-portal-btn-assigned-work");
@@ -1185,7 +1214,7 @@
       const cpId = parsePortalIdFromRole(role);
       if (cpId) {
         stopTsTick();
-        const portal = getCustomPortalsList().find((x) => x.id === cpId);
+        const portal = findCustomPortalById(cpId);
         if (!portal || !portal.fields || portal.fields.length === 0) {
           alert("This portal is not available. Ask an administrator.");
           logout();
@@ -1296,7 +1325,22 @@
     const container = $("#role-picker-buttons");
     if (!container) return;
     container.innerHTML = "";
-    const ordered = getRolePickerOrder().filter((r) => matches.includes(r));
+    const matchSet = new Set(matches);
+    const order = getRolePickerOrder();
+    const seen = new Set();
+    const ordered = [];
+    for (const r of order) {
+      if (matchSet.has(r) && !seen.has(r)) {
+        ordered.push(r);
+        seen.add(r);
+      }
+    }
+    for (const r of matches) {
+      if (r && !seen.has(r)) {
+        ordered.push(r);
+        seen.add(r);
+      }
+    }
     ordered.forEach((role) => {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -1604,9 +1648,9 @@
 
   function formatAssignmentScopeLabel(scope) {
     if (!scope || scope === "all") return "All portals";
-    if (typeof scope === "string" && scope.startsWith("cp_")) {
+    if (typeof scope === "string" && scope.toLowerCase().startsWith("cp_")) {
       const pid = parsePortalIdFromRole(scope);
-      const p = pid && getCustomPortalsList().find((x) => x.id === pid);
+      const p = pid && findCustomPortalById(pid);
       return p ? `${p.title} (custom)` : "Custom portal";
     }
     return ROLE_LABELS[scope] || scope;
@@ -2400,7 +2444,7 @@
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     const cpFilterId = parsePortalIdFromRole(dashboardFilter);
-    if (cpFilterId && !getCustomPortalsList().some((p) => p.id === cpFilterId)) {
+    if (cpFilterId && !findCustomPortalById(cpFilterId)) {
       dashboardFilter = "all";
     }
     syncDashboardCustomStats(custom);
@@ -2803,7 +2847,7 @@
     const form = $("#custom-portal-form");
     if (!body || !form) return;
     const portalId = form.dataset.portalId;
-    const portal = portalId && getCustomPortalsList().find((p) => p.id === portalId);
+    const portal = portalId && findCustomPortalById(portalId);
     if (!portal || !portal.followUpReminderEnabled) {
       body.innerHTML =
         '<p class="muted" style="margin:0">Reminders are not enabled for this portal. An administrator can turn them on under Admin → Custom portals.</p>';
@@ -3264,7 +3308,7 @@
   }
 
   function setAdminCustomTab(portalId) {
-    const p = getCustomPortalsList().find((x) => x.id === portalId);
+    const p = findCustomPortalById(portalId);
     if (p) openAdminCustomEditor(p);
   }
 
@@ -3569,7 +3613,7 @@
     viewCustomPortal.addEventListener("click", (ev) => {
       if (ev.target.closest("#custom-portal-cancel-edit")) {
         const pid = $("#custom-portal-form") && $("#custom-portal-form").dataset.portalId;
-        const p = pid && getCustomPortalsList().find((x) => x.id === pid);
+        const p = pid && findCustomPortalById(pid);
         if (p) clearCustomPortalEditMode(p);
         return;
       }
@@ -3577,7 +3621,7 @@
       if (ed && $("#custom-portal-history-list") && $("#custom-portal-history-list").contains(ed)) {
         const id = ed.getAttribute("data-custom-entry-id");
         const pid = $("#custom-portal-form") && $("#custom-portal-form").dataset.portalId;
-        const p = pid && getCustomPortalsList().find((x) => x.id === pid);
+        const p = pid && findCustomPortalById(pid);
         const entry =
           id && p && (state.customPortalEntries[p.id] || []).find((x) => x.id === id);
         if (p && entry) populateCustomPortalFromEntry(p, entry);
@@ -3779,7 +3823,7 @@
     if (!form || form.id !== "custom-portal-form") return;
     ev.preventDefault();
     const portalId = form.dataset.portalId;
-    const portal = getCustomPortalsList().find((p) => p.id === portalId);
+    const portal = findCustomPortalById(portalId);
     if (!portal) return;
     const answers = {};
     for (const f of portal.fields) {
@@ -4056,7 +4100,7 @@
       if (!state.customPortalEntries[newPortal.id]) state.customPortalEntries[newPortal.id] = [];
       saveState(state);
       renderAdminCustomPortalsList();
-      const saved = getCustomPortalsList().find((x) => x.id === newPortal.id);
+      const saved = findCustomPortalById(newPortal.id);
       if (saved) openAdminCustomEditor(saved);
       setAdminCustomMsg("Portal saved.", "ok");
       renderDashboard();
