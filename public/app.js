@@ -325,6 +325,56 @@
     }
   }
 
+  /**
+   * After a server pull, keep custom portals that exist only in localStorage.
+   * Otherwise a stale or empty server document wipes portals the admin just created on this device
+   * (push may still be in flight, or another tab saved before the server caught up).
+   */
+  function mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw) {
+    if (!serverNorm || typeof serverNorm !== "object") return serverNorm;
+    if (localRaw == null) return serverNorm;
+    let localParsed = null;
+    try {
+      localParsed = typeof localRaw === "string" ? JSON.parse(localRaw) : localRaw;
+    } catch {
+      return serverNorm;
+    }
+    if (!localParsed || typeof localParsed !== "object") return serverNorm;
+
+    const localPortals = Array.isArray(localParsed.customPortals) ? localParsed.customPortals : [];
+    if (localPortals.length === 0) return serverNorm;
+
+    const list = Array.isArray(serverNorm.customPortals) ? serverNorm.customPortals.slice() : [];
+    const serverIds = new Set(list.map((p) => String(p && p.id).trim()).filter(Boolean));
+    const byId = new Map(list.map((p) => [String(p.id).trim(), p]));
+    const addedFromLocal = [];
+
+    for (const raw of localPortals) {
+      const np = normalizeCustomPortal(raw);
+      if (!np) continue;
+      const id = String(np.id).trim();
+      if (!id || serverIds.has(id)) continue;
+      if (!byId.has(id)) {
+        byId.set(id, np);
+        addedFromLocal.push(id);
+      }
+    }
+    if (addedFromLocal.length === 0) return serverNorm;
+
+    serverNorm.customPortals = Array.from(byId.values());
+
+    const localEntries =
+      localParsed.customPortalEntries && typeof localParsed.customPortalEntries === "object"
+        ? localParsed.customPortalEntries
+        : {};
+    const mergedEntries = { ...(serverNorm.customPortalEntries || {}) };
+    for (const id of addedFromLocal) {
+      if (Array.isArray(localEntries[id])) mergedEntries[id] = localEntries[id];
+    }
+    serverNorm.customPortalEntries = mergedEntries;
+    return serverNorm;
+  }
+
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -394,7 +444,14 @@
       serverRevision = Number(j.revision) || 0;
       lastServerPullHadDocument = j.state != null && typeof j.state === "object";
       if (lastServerPullHadDocument) {
-        state = normalizeParsedState(j.state);
+        let localRaw = null;
+        try {
+          localRaw = localStorage.getItem(STORAGE_KEY);
+        } catch (e) {
+          /* ignore */
+        }
+        const serverNorm = normalizeParsedState(j.state);
+        state = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw);
         persistStateLocal(state);
       }
     } catch (e) {
@@ -417,7 +474,14 @@
       if (rev <= serverRevision) return;
       serverRevision = rev;
       if (j.state != null && typeof j.state === "object") {
-        state = normalizeParsedState(j.state);
+        let localRaw = null;
+        try {
+          localRaw = localStorage.getItem(STORAGE_KEY);
+        } catch (e) {
+          /* ignore */
+        }
+        const serverNorm = normalizeParsedState(j.state);
+        state = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw);
         persistStateLocal(state);
         snapshotStateStorageRaw();
         if (sessionRole) enterPortal(sessionRole);
@@ -3500,10 +3564,8 @@
       const f = dashTabBtn.getAttribute("data-dash-tab");
       if (["all", "field", "survey"].includes(f) || (f && f.startsWith("cp_"))) {
         dashboardFilter = f;
-        setDashboardTabsUI(f);
-        setDashboardSectionVisibility(f);
-        const ds = getDashboardFilteredDatasets();
-        renderDashboardCharts(ds.field, ds.survey, ds.custom);
+        setDashboardManagerSection("analytics");
+        renderDashboard();
       }
       return;
     }
@@ -4174,7 +4236,8 @@
         followUpReminderDays,
       };
       const list = getCustomPortalsList().slice();
-      const idx = list.findIndex((p) => p.id === newPortal.id);
+      const nid = String(newPortal.id).trim();
+      const idx = list.findIndex((p) => String(p.id).trim() === nid);
       if (idx >= 0) list[idx] = newPortal;
       else list.push(newPortal);
       state.customPortals = list;
