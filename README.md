@@ -1,6 +1,6 @@
 # Multi Login Portal
 
-Multi-role web app (work reports, surveys, kitchen forms, dashboard, reminders, calendar, custom portals). The UI is static files under `public/`; **all shared data is stored in one file on the server** (`data/portal-state.json`) and synced from every browser or Android client.
+Multi-role web app (work reports, surveys, dashboard, custom portals). The UI is static files under `public/`; **all shared data is stored in one file on the server** (`data/portal-state.json`) and synced from every browser (including installed PWAs).
 
 ## Run locally
 
@@ -53,54 +53,6 @@ Clients still mirror the latest state to `localStorage` for offline resilience a
 
 3. **HTTP API (operators / automation)**  
    - `GET /api/state` returns the full document (same caution as the file). Use only on trusted networks or with extra protection.
-
-## Android APK (Capacitor)
-
-The `android/` project wraps the same web app. Generated APKs are **not** committed (see `android/.gitignore`).
-
-### Option A — Load your deployed site in the WebView (simplest for sync)
-
-1. Edit root `capacitor.config.json` and add a `server` block with your **HTTPS** URL (same origin as your API), for example:
-
-   ```json
-   {
-     "appId": "com.multilogin.portal",
-     "appName": "Multi Login Portal",
-     "webDir": "public",
-     "server": {
-       "url": "https://your-app.example.com",
-       "androidScheme": "https"
-     }
-   }
-   ```
-
-2. Sync and open Android Studio:
-
-   ```bash
-   npm run cap:sync
-   npm run cap:open
-   ```
-
-3. In Android Studio: **Build → Build Bundle(s) / APK(s) → Build APK(s)**. The output path is shown in the **Build** tool window (often under `android/app/build/outputs/apk/`).
-
-### Option B — Bundled web assets in the APK
-
-1. Leave `server` **out** of `capacitor.config.json` (default in this repo).
-2. Set `window.PORTAL_API_BASE` in `public/index.html` to the **full origin** of your API (e.g. `https://your-app.example.com`) so `GET`/`PUT /api/state` hit the right host (the bundled UI is not served from that origin).
-3. Run `npm run cap:sync`, then build the APK in Android Studio as above.
-
-**Requirements:** Android Studio, Android SDK, and JDK as required by current Capacitor/Android Gradle. Run `npm run cap:sync` after changing files in `public/` before each release build.
-
-### Download a pre-built debug APK (GitHub)
-
-If you do not have Android Studio locally, use the automated build:
-
-1. Open the repository’s **Actions** tab on GitHub.
-2. Select the **Build debug APK** workflow and open the latest successful run.
-3. Under **Artifacts**, download **`multi-login-portal-debug-apk`** (ZIP contains `app-debug.apk`).
-4. On your phone, allow install from unknown sources if prompted, then open the APK (e.g. from Files or the Downloads app).
-
-**Note:** The default Capacitor config loads the bundled `public/` UI. Set `PORTAL_API_BASE` in `public/index.html` to your live server URL (see README above) and push, or add a `server.url` in `capacitor.config.json`, then wait for a new Actions build so the app can reach your backend.
 
 ## Deploy (e.g. Render)
 
