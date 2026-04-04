@@ -284,10 +284,35 @@
           <span id="dashboard-role-badge" class="role-badge">Manager</span>
         </div>
         <div class="header-actions">
+          <button type="button" class="btn ghost" data-manager-created-portals-open>Created portals</button>
           <button type="button" class="btn ghost" data-switch-portal hidden>Switch portal</button>
           <button type="button" class="btn ghost" data-logout>Log out</button>
         </div>
       </header>
+      <div
+        id="manager-created-portals-overlay"
+        class="manager-created-portals-overlay"
+        hidden
+        aria-hidden="true"
+      >
+        <div
+          class="manager-created-portals-panel card"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mcp-heading"
+        >
+          <div class="manager-created-portals-panel-head">
+            <h2 id="mcp-heading" class="manager-created-portals-panel-title">Created portals</h2>
+            <button type="button" class="btn ghost" data-manager-created-portals-close aria-label="Close">
+              Close
+            </button>
+          </div>
+          <p class="muted manager-created-portals-intro">
+            Portals configured in <strong>Admin</strong> → Custom portals. Open one to see charts and form submissions for that portal.
+          </p>
+          <div id="manager-created-portals-list" class="manager-created-portals-list"></div>
+        </div>
+      </div>
       <main>
         <div
           class="dash-manager-section-tabs"
@@ -774,6 +799,6 @@
       });
     }
   </script>
-  <script src="app.js?v=16"></script>
+  <script src="app.js?v=17"></script>
 </body>
 </html>

@@ -982,6 +982,20 @@
     admin: $("#view-admin"),
   };
 
+  (function wireManagerCreatedPortalsOverlay() {
+    const ov = document.getElementById("manager-created-portals-overlay");
+    const panel = document.querySelector(".manager-created-portals-panel");
+    if (panel) {
+      panel.addEventListener("click", (e) => e.stopPropagation());
+    }
+    if (ov) {
+      ov.addEventListener("click", () => {
+        ov.hidden = true;
+        ov.setAttribute("aria-hidden", "true");
+      });
+    }
+  })();
+
   /** Read custom portals + entries from the saved JSON in localStorage (same document as full app state). */
   function parseStoredStateCustomPortalsSlice() {
     try {
@@ -2482,6 +2496,7 @@
     };
     apply($("#dashboard-portal-tabs"));
     apply($("#manager-custom-portals-rail"));
+    apply($("#manager-created-portals-overlay"));
   }
 
   function destroyDashboardCharts() {
@@ -2827,11 +2842,66 @@
     rail.appendChild(row);
   }
 
+  function setManagerCreatedPortalsOverlayOpen(open) {
+    const ov = document.getElementById("manager-created-portals-overlay");
+    if (!ov) return;
+    ov.hidden = !open;
+    ov.setAttribute("aria-hidden", open ? "false" : "true");
+  }
+
+  function renderManagerCreatedPortalsPanel() {
+    const root = document.getElementById("manager-created-portals-list");
+    if (!root) return;
+    root.innerHTML = "";
+    const portals = getCustomPortalsList();
+    if (portals.length === 0) {
+      const p = document.createElement("p");
+      p.className = "muted";
+      p.innerHTML =
+        "No custom portals yet. An administrator must create them under <strong>Admin</strong> → Custom portals. If you use different computers, run <strong>node server.js</strong> and open the same app URL everywhere.";
+      root.appendChild(p);
+      return;
+    }
+    portals.forEach((portal) => {
+      const row = document.createElement("div");
+      row.className = "manager-created-portal-row";
+      const meta = document.createElement("div");
+      meta.className = "manager-created-portal-meta";
+      const titleEl = document.createElement("span");
+      titleEl.className = "manager-created-portal-title";
+      const t = portal.title != null ? String(portal.title) : "Portal";
+      titleEl.textContent = t.length > 80 ? t.slice(0, 78) + "…" : t;
+      const sub = document.createElement("span");
+      sub.className = "muted manager-created-portal-sub";
+      const nFields = (portal.fields || []).length;
+      const pid = String(portal.id).trim();
+      const ent = state.customPortalEntries || {};
+      const subArr = ent[pid] ?? ent[portal.id];
+      const nSub = Array.isArray(subArr) ? subArr.length : 0;
+      sub.textContent = `${nFields} question(s) · ${nSub} submission(s)`;
+      meta.appendChild(titleEl);
+      meta.appendChild(sub);
+      const openBtn = document.createElement("button");
+      openBtn.type = "button";
+      openBtn.className = "btn primary";
+      openBtn.setAttribute("data-dash-tab", portalRoleKey(portal.id));
+      openBtn.textContent = "Open in dashboard";
+      openBtn.title = "Show charts and table for this portal";
+      row.appendChild(meta);
+      row.appendChild(openBtn);
+      root.appendChild(row);
+    });
+  }
+
   function renderDashboard() {
     if (isDashboardManagerRole()) applyLatestCustomPortalsFromLocalStorageToState();
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
     renderManagerCustomPortalsRail();
+    const mcpOv = $("#manager-created-portals-overlay");
+    if (mcpOv && !mcpOv.hidden && isDashboardManagerRole()) {
+      renderManagerCreatedPortalsPanel();
+    }
     const cpEmptyHint = $("#dashboard-custom-portals-empty-hint");
     if (cpEmptyHint) {
       cpEmptyHint.hidden = !(isDashboardManagerRole() && getCustomPortalsList().length === 0);
@@ -3875,17 +3945,34 @@
     if (dashTabBtn && isDashboardManagerRole()) {
       const dashTabsRoot = $("#dashboard-portal-tabs");
       const mgrRail = $("#manager-custom-portals-rail");
+      const mcpOverlay = $("#manager-created-portals-overlay");
       const inTabs = dashTabsRoot && dashTabsRoot.contains(dashTabBtn);
       const inRail = mgrRail && mgrRail.contains(dashTabBtn);
-      if (inTabs || inRail) {
+      const inCreatedPanel = mcpOverlay && !mcpOverlay.hidden && mcpOverlay.contains(dashTabBtn);
+      if (inTabs || inRail || inCreatedPanel) {
         const f = dashTabBtn.getAttribute("data-dash-tab");
         if (["all", "field", "survey"].includes(f) || (f && f.startsWith("cp_"))) {
           dashboardFilter = f;
           setDashboardManagerSection("analytics");
+          if (inCreatedPanel) setManagerCreatedPortalsOverlayOpen(false);
           renderDashboard();
         }
         return;
       }
+    }
+
+    const mcpOpenBtn = closestFromEvent(ev, "[data-manager-created-portals-open]");
+    if (mcpOpenBtn && views.dashboard && views.dashboard.contains(mcpOpenBtn) && isDashboardManagerRole()) {
+      renderManagerCreatedPortalsPanel();
+      setManagerCreatedPortalsOverlayOpen(true);
+      return;
+    }
+
+    const mcpCloseBtn = closestFromEvent(ev, "[data-manager-created-portals-close]");
+    const mcpOvClose = $("#manager-created-portals-overlay");
+    if (mcpCloseBtn && mcpOvClose && mcpOvClose.contains(mcpCloseBtn)) {
+      setManagerCreatedPortalsOverlayOpen(false);
+      return;
     }
 
     const dashSecBtn = closestFromEvent(ev, "[data-dash-section]");

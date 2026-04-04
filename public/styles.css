@@ -1031,6 +1031,84 @@ body {
   line-height: 1.45;
 }
 
+.manager-created-portals-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 1.25rem;
+  padding-top: 2.5rem;
+  background: rgba(30, 24, 18, 0.45);
+  overflow-y: auto;
+}
+
+.manager-created-portals-overlay[hidden] {
+  display: none !important;
+}
+
+.manager-created-portals-panel {
+  width: 100%;
+  max-width: 28rem;
+  margin-bottom: 2rem;
+}
+
+.manager-created-portals-panel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.manager-created-portals-panel-title {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.manager-created-portals-intro {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.manager-created-portals-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.manager-created-portal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.manager-created-portal-row .manager-created-portal-meta {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.manager-created-portal-row .manager-created-portal-title {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.manager-created-portal-row .manager-created-portal-sub {
+  display: block;
+  font-size: 0.85rem;
+  margin-top: 0.2rem;
+}
+
 .dash-portal-tabs {
   display: flex;
   flex-wrap: wrap;
