@@ -337,7 +337,8 @@
    */
   function mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw) {
     if (!serverNorm || typeof serverNorm !== "object") return serverNorm;
-    if (localRaw == null) return serverNorm;
+    /** Empty string is not valid JSON; treat like missing. */
+    if (localRaw == null || localRaw === "") return serverNorm;
     let localParsed = null;
     try {
       localParsed = typeof localRaw === "string" ? JSON.parse(localRaw) : localRaw;
@@ -452,6 +453,8 @@
       serverRevision = Number(j.revision) || 0;
       lastServerPullHadDocument = j.state != null && typeof j.state === "object";
       if (lastServerPullHadDocument) {
+        /** In-memory state from loadState() can hold portals even when the server file is an old/minimal JSON (e.g. only admin creds). localStorage alone can be null on first paint in some environments — always merge this snapshot too. */
+        const prePullSnapshot = JSON.stringify(state);
         let localRaw = null;
         try {
           localRaw = localStorage.getItem(STORAGE_KEY);
@@ -459,7 +462,9 @@
           /* ignore */
         }
         const serverNorm = normalizeParsedState(j.state);
-        state = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw);
+        let merged = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, prePullSnapshot);
+        merged = mergeLocalOnlyCustomPortalsIntoServerState(merged, localRaw);
+        state = merged;
         persistStateLocal(state);
       }
     } catch (e) {
@@ -482,6 +487,7 @@
       if (rev <= serverRevision) return;
       serverRevision = rev;
       if (j.state != null && typeof j.state === "object") {
+        const prePollSnapshot = JSON.stringify(state);
         let localRaw = null;
         try {
           localRaw = localStorage.getItem(STORAGE_KEY);
@@ -489,7 +495,9 @@
           /* ignore */
         }
         const serverNorm = normalizeParsedState(j.state);
-        state = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, localRaw);
+        let merged = mergeLocalOnlyCustomPortalsIntoServerState(serverNorm, prePollSnapshot);
+        merged = mergeLocalOnlyCustomPortalsIntoServerState(merged, localRaw);
+        state = merged;
         persistStateLocal(state);
         snapshotStateStorageRaw();
         if (sessionRole) enterPortal(sessionRole);
@@ -2547,6 +2555,10 @@
   function renderDashboard() {
     const { field, survey, custom } = getDashboardFilteredDatasets();
     syncDashboardCustomTabs();
+    const cpEmptyHint = $("#dashboard-custom-portals-empty-hint");
+    if (cpEmptyHint) {
+      cpEmptyHint.hidden = !(isDashboardManagerRole() && getCustomPortalsList().length === 0);
+    }
     const cpFilterId = parsePortalIdFromRole(dashboardFilter);
     if (cpFilterId && !findCustomPortalById(cpFilterId)) {
       dashboardFilter = "all";
