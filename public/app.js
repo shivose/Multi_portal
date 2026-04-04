@@ -372,15 +372,13 @@
       .filter(Boolean);
     const byId = new Map(list.map((p) => [String(p.id).trim(), p]));
 
+    /** Any portal id present in localStorage overwrites server/memory for that id (disk = Admin save on this browser). */
     for (const raw of localPortals) {
       const np = normalizeCustomPortal(raw);
       if (!np) continue;
       const id = String(np.id).trim();
       if (!id) continue;
-      const ex = byId.get(id);
-      if (!ex || customPortalDefinitionShouldPrefer(np, ex)) {
-        byId.set(id, np);
-      }
+      byId.set(id, np);
     }
 
     serverNorm.customPortals = Array.from(byId.values());
@@ -434,6 +432,18 @@
     }
   }
 
+  /** Other tabs do not get a `storage` event from the tab that wrote; use BroadcastChannel for instant sync. */
+  let portalBroadcastPost = null;
+  function postPortalDataSavedToOtherTabs() {
+    try {
+      if (typeof BroadcastChannel === "undefined") return;
+      if (!portalBroadcastPost) portalBroadcastPost = new BroadcastChannel("multiLoginPortal_sync_v1");
+      portalBroadcastPost.postMessage({ type: "state" });
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
   function scheduleServerPush() {
     if (!apiSyncEnabled || !serverSyncReady) return;
     if (serverPushTimer != null) clearTimeout(serverPushTimer);
@@ -445,6 +455,8 @@
 
   function saveState(st) {
     persistStateLocal(st);
+    snapshotStateStorageRaw();
+    postPortalDataSavedToOtherTabs();
     if (serverSyncReady) scheduleServerPush();
   }
 
@@ -792,6 +804,33 @@
       if (ev && ev.key === STORAGE_KEY) externalStateRefreshAssignedWorkOnly();
     });
 
+    try {
+      if (typeof BroadcastChannel !== "undefined") {
+        const bc = new BroadcastChannel("multiLoginPortal_sync_v1");
+        bc.onmessage = () => {
+          let raw = null;
+          try {
+            raw = localStorage.getItem(STORAGE_KEY) || null;
+          } catch (e) {
+            return;
+          }
+          if (raw === lastStateStorageRaw) return;
+          lastStateStorageRaw = raw;
+          state = loadState();
+          refreshAllAssigneeWorkMounts();
+          if (isDashboardManagerRole()) {
+            renderManagerAssignWorkUI();
+            if (views.dashboard && !views.dashboard.hidden) renderDashboard();
+          }
+          if (sessionRole === "admin") {
+            renderAdminCustomPortalsList();
+          }
+        };
+      }
+    } catch (e) {
+      /* ignore */
+    }
+
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState !== "visible") return;
       if (isDashboardManagerRole() && (sessionRole === "dashboard" || sessionRole === "supervisor")) {
@@ -845,47 +884,36 @@
     admin: $("#view-admin"),
   };
 
-  /** Prefer `incoming` when it carries a richer portal definition (Admin save vs stale RAM/server). */
-  function customPortalDefinitionShouldPrefer(incoming, existing) {
-    if (!existing) return true;
-    const ex = (existing.fields || []).length;
-    const inc = (incoming.fields || []).length;
-    if (inc > ex) return true;
-    if (ex === 0 && inc > 0) return true;
-    return false;
-  }
-
   /**
-   * Single source for “which custom portals exist”: union in-memory `state` and latest localStorage.
-   * localStorage may hold the Admin’s latest save while `state` is stale (e.g. after sync); disk can replace same id.
+   * Single source for “which custom portals exist”: start from in-memory `state`, then apply every portal id
+   * found in localStorage (disk wins on id collision — that is what Admin saved in this browser).
    * Writes merged portals (and any missing entry arrays from disk) back onto `state` so charts/tables match.
    */
   function getCustomPortalsList() {
     if (!state || typeof state !== "object") return [];
     const byId = new Map();
-    const addFromSource = (item, allowUpgrade) => {
+    const addFromStateOnly = (item) => {
       const p = normalizeCustomPortal(item);
       if (!p) return;
       const id = String(p.id).trim();
       if (!id) return;
-      const ex = byId.get(id);
-      if (!ex) {
-        byId.set(id, p);
-        return;
-      }
-      if (allowUpgrade && customPortalDefinitionShouldPrefer(p, ex)) {
-        byId.set(id, p);
-      }
+      if (!byId.has(id)) byId.set(id, p);
     };
     const sc = state.customPortals;
-    if (Array.isArray(sc)) sc.forEach((item) => addFromSource(item, false));
-    else if (sc != null && typeof sc === "object") Object.values(sc).forEach((item) => addFromSource(item, false));
+    if (Array.isArray(sc)) sc.forEach(addFromStateOnly);
+    else if (sc != null && typeof sc === "object") Object.values(sc).forEach(addFromStateOnly);
     try {
       const disk = localStorage.getItem(STORAGE_KEY);
       if (disk) {
         const j = JSON.parse(disk);
         if (j && typeof j === "object") {
-          coerceRawCustomPortalsToArray(j.customPortals).forEach((item) => addFromSource(item, true));
+          coerceRawCustomPortalsToArray(j.customPortals).forEach((item) => {
+            const p = normalizeCustomPortal(item);
+            if (!p) return;
+            const id = String(p.id).trim();
+            if (!id) return;
+            byId.set(id, p);
+          });
           if (!state.customPortalEntries || typeof state.customPortalEntries !== "object") {
             state.customPortalEntries = {};
           }
