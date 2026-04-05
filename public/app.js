@@ -33,6 +33,11 @@
     return "cp_" + s;
   }
 
+  /** Manager and admin go straight into their screens; everyone else sees a portal button first. */
+  function roleSkipsPortalLanding(role) {
+    return role === "dashboard" || role === "admin";
+  }
+
   function parsePortalIdFromRole(role) {
     if (typeof role !== "string") return null;
     const r = role.trim();
@@ -1641,7 +1646,7 @@
   }
 
   function showRolePicker(matches, opts = {}) {
-    rolePickerMode = opts.fromSwitch ? "switch" : "login";
+    rolePickerMode = opts.fromSwitch ? "switch" : opts.singlePortalLanding ? "singlePortal" : "login";
     const heading = $("#role-picker-heading");
     const intro = $("#role-picker-intro");
     const backBtn = $("#role-picker-back");
@@ -1652,6 +1657,12 @@
           "Choose another portal your account can open. Cancel returns you here without signing out.";
       }
       if (backBtn) backBtn.textContent = "Cancel";
+    } else if (rolePickerMode === "singlePortal") {
+      if (heading) heading.textContent = "Your portal";
+      if (intro) {
+        intro.textContent = "Tap the portal name below to open the form.";
+      }
+      if (backBtn) backBtn.textContent = "Back to sign in";
     } else {
       if (heading) heading.textContent = "Choose portal";
       if (intro) {
@@ -3882,14 +3893,14 @@
         return;
       }
       sessionUsername = sessionUser || String(username ?? "").trim();
-      if (matches.length === 1) {
-        sessionPortalOptions = matches.slice();
-        sessionRole = matches[0];
-        enterPortal(matches[0]);
+      sessionPortalOptions = matches.slice();
+      const only = matches.length === 1 ? matches[0] : null;
+      if (only && roleSkipsPortalLanding(only)) {
+        sessionRole = only;
+        enterPortal(only);
         return;
       }
-      sessionPortalOptions = matches.slice();
-      showRolePicker(matches);
+      showRolePicker(matches, only ? { singlePortalLanding: true } : {});
     });
   }
 
