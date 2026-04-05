@@ -766,6 +766,57 @@
               <button type="button" class="btn ghost" id="admin-custom-add-cred">Add login</button>
             </div>
             <div class="admin-custom-section" style="margin-top: 1.25rem">
+              <span class="field-label">Submission timer (sign-in buttons)</span>
+              <p class="hint" style="margin: 0 0 0.65rem">
+                Controls the colour of this portal’s button after sign-in (not Manager/Admin): <strong class="admin-hint-blue">blue</strong> when off or still before the deadline, <strong class="admin-hint-green">green</strong> when this login has submitted on time, <strong class="admin-hint-red">red</strong> when a submission is due or overdue. Schedules are based on each login’s own submissions.
+              </p>
+              <label class="field">
+                <span class="field-label">Schedule type</span>
+                <select id="admin-custom-timer-mode" class="admin-select-wide">
+                  <option value="off">Off — button stays blue</option>
+                  <option value="interval_hours">Every … hours (from last submission)</option>
+                  <option value="interval_days">Every … days (deadline clock time)</option>
+                  <option value="interval_weeks">Every … weeks (deadline clock time)</option>
+                  <option value="daily">Daily by time of day</option>
+                  <option value="alternate_day">Every 2nd day by time of day</option>
+                  <option value="weekly">Weekly on a weekday by clock time</option>
+                  <option value="monthly">Monthly on a day by clock time</option>
+                </select>
+              </label>
+              <div id="admin-custom-timer-interval-wrap" class="admin-timer-subwrap" hidden>
+                <label class="field" style="margin-top: 0.65rem">
+                  <span class="field-label" id="admin-custom-timer-interval-label">Interval</span>
+                  <input type="number" id="admin-custom-timer-interval" min="1" max="8760" step="1" value="1" />
+                </label>
+              </div>
+              <div id="admin-custom-timer-time-wrap" class="admin-timer-subwrap" hidden>
+                <label class="field" style="margin-top: 0.65rem">
+                  <span class="field-label">Deadline time (local)</span>
+                  <input type="time" id="admin-custom-timer-time" value="09:00" />
+                </label>
+              </div>
+              <div id="admin-custom-timer-weekday-wrap" class="admin-timer-subwrap" hidden>
+                <label class="field" style="margin-top: 0.65rem">
+                  <span class="field-label">Day of week (deadline)</span>
+                  <select id="admin-custom-timer-weekday">
+                    <option value="0">Sunday</option>
+                    <option value="1">Monday</option>
+                    <option value="2">Tuesday</option>
+                    <option value="3">Wednesday</option>
+                    <option value="4">Thursday</option>
+                    <option value="5">Friday</option>
+                    <option value="6">Saturday</option>
+                  </select>
+                </label>
+              </div>
+              <div id="admin-custom-timer-monthday-wrap" class="admin-timer-subwrap" hidden>
+                <label class="field" style="margin-top: 0.65rem">
+                  <span class="field-label">Day of month (1–28)</span>
+                  <input type="number" id="admin-custom-timer-monthday" min="1" max="28" step="1" value="1" />
+                </label>
+              </div>
+            </div>
+            <div class="admin-custom-section" style="margin-top: 1.25rem">
               <span class="field-label">In-portal reminders (next entry)</span>
               <p class="hint" style="margin: 0 0 0.5rem">
                 After each submission, if no newer entry is made, a <strong>Reminders</strong> notice appears in this
@@ -806,6 +857,6 @@
       });
     }
   </script>
-  <script src="app.js?v=20"></script>
+  <script src="app.js?v=21"></script>
 </body>
 </html>

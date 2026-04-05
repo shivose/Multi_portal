@@ -896,6 +896,37 @@ body {
   justify-content: center;
 }
 
+/* Custom portal submission timer (sign-in): blue = off/pending, green = submitted on time, red = due */
+.role-picker-actions .role-picker-btn.role-picker-timer-neutral {
+  background: linear-gradient(135deg, #1565c0, #0d47a1);
+  border-color: transparent;
+  color: #fff;
+}
+
+.role-picker-actions .role-picker-btn.role-picker-timer-neutral:hover {
+  filter: brightness(1.08);
+}
+
+.role-picker-actions .role-picker-btn.role-picker-timer-ok {
+  background: linear-gradient(135deg, #2e7d32, #1b5e20);
+  border-color: transparent;
+  color: #fff;
+}
+
+.role-picker-actions .role-picker-btn.role-picker-timer-ok:hover {
+  filter: brightness(1.08);
+}
+
+.role-picker-actions .role-picker-btn.role-picker-timer-due {
+  background: linear-gradient(135deg, #c62828, #b71c1c);
+  border-color: transparent;
+  color: #fff;
+}
+
+.role-picker-actions .role-picker-btn.role-picker-timer-due:hover {
+  filter: brightness(1.08);
+}
+
 .role-picker-back {
   width: 100%;
   margin-top: 0.25rem;
@@ -1367,6 +1398,29 @@ tr:last-child td {
 
 .admin-custom-section {
   margin-top: 1rem;
+}
+
+.admin-select-wide {
+  width: 100%;
+  max-width: 28rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.admin-hint-blue {
+  color: #1565c0;
+}
+
+.admin-hint-green {
+  color: #2e7d32;
+}
+
+.admin-hint-red {
+  color: #c62828;
 }
 
 .admin-custom-create-wrap {

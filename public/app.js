@@ -150,6 +150,7 @@
     let followUpReminderDays = parseInt(p && p.followUpReminderDays, 10);
     if (!Number.isFinite(followUpReminderDays) || followUpReminderDays < 1) followUpReminderDays = 7;
     if (followUpReminderDays > 366) followUpReminderDays = 366;
+    const submissionTimer = normalizeSubmissionTimerFromPortal(p);
     return {
       id,
       title,
@@ -157,7 +158,197 @@
       credentials: creds.filter((c) => c.username),
       followUpReminderEnabled,
       followUpReminderDays,
+      submissionTimer,
     };
+  }
+
+  const SUBMISSION_TIMER_MODES = new Set([
+    "off",
+    "interval_hours",
+    "interval_days",
+    "interval_weeks",
+    "daily",
+    "alternate_day",
+    "weekly",
+    "monthly",
+  ]);
+
+  function normalizeSubmissionTimerFromPortal(p) {
+    const raw = p && typeof p.submissionTimer === "object" && p.submissionTimer ? p.submissionTimer : {};
+    let mode = String(raw.mode || "off").trim();
+    if (!SUBMISSION_TIMER_MODES.has(mode)) mode = "off";
+    const enabled = !!raw.enabled && mode !== "off";
+    const effMode = enabled ? mode : "off";
+    let iv = parseInt(raw.intervalValue, 10);
+    if (!Number.isFinite(iv) || iv < 1) iv = 1;
+    if (effMode === "interval_hours" && iv > 8760) iv = 8760;
+    if ((effMode === "interval_days" || effMode === "interval_weeks") && iv > 366) iv = 366;
+    let timeOfDay = String(raw.timeOfDay != null ? raw.timeOfDay : "09:00").trim();
+    const tm = /^(\d{1,2}):(\d{2})$/.exec(timeOfDay);
+    if (!tm) timeOfDay = "09:00";
+    else {
+      const hh = Math.min(23, Math.max(0, parseInt(tm[1], 10)));
+      const mm = Math.min(59, Math.max(0, parseInt(tm[2], 10)));
+      timeOfDay = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    }
+    let weeklyWeekday = parseInt(raw.weeklyWeekday, 10);
+    if (!Number.isFinite(weeklyWeekday) || weeklyWeekday < 0 || weeklyWeekday > 6) weeklyWeekday = 1;
+    let monthlyDay = parseInt(raw.monthlyDay, 10);
+    if (!Number.isFinite(monthlyDay) || monthlyDay < 1 || monthlyDay > 28) monthlyDay = 1;
+    return {
+      enabled,
+      mode: effMode,
+      intervalValue: iv,
+      timeOfDay,
+      weeklyWeekday,
+      monthlyDay,
+    };
+  }
+
+  function parseHHMM(hhmm) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm || "").trim());
+    if (!m) return { h: 9, min: 0 };
+    const h = Math.min(23, Math.max(0, parseInt(m[1], 10)));
+    const mi = Math.min(59, Math.max(0, parseInt(m[2], 10)));
+    return { h, min: mi };
+  }
+
+  function startOfLocalDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+  }
+
+  function localYmdFromDate(d) {
+    const y = d.getFullYear();
+    const mo = d.getMonth() + 1;
+    const day = d.getDate();
+    return `${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  function combineLocalDateAndTime(dayStart, hhmm) {
+    const { h, min } = parseHHMM(hhmm);
+    return new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), h, min, 0, 0);
+  }
+
+  function addLocalDaysAtTime(anchorDate, nDays, hhmm) {
+    const base = startOfLocalDay(anchorDate);
+    base.setDate(base.getDate() + nDays);
+    return combineLocalDateAndTime(base, hhmm);
+  }
+
+  function daysInMonth(y, monthIndex0) {
+    return new Date(y, monthIndex0 + 1, 0).getDate();
+  }
+
+  function addMonthsClampDayFromDate(anchor, monthsToAdd, dayOfMonth, hhmm) {
+    const { h, min } = parseHHMM(hhmm);
+    const y = anchor.getFullYear();
+    const m = anchor.getMonth() + monthsToAdd;
+    const d = new Date(y, m, 1);
+    const dim = daysInMonth(d.getFullYear(), d.getMonth());
+    const day = Math.min(Math.max(1, dayOfMonth), dim);
+    d.setDate(day);
+    d.setHours(h, min, 0, 0);
+    return d;
+  }
+
+  function nextWeeklyDeadlineAfter(lastSubmit, weekday, hhmm) {
+    let d = startOfLocalDay(new Date(lastSubmit));
+    d.setDate(d.getDate() + 1);
+    for (let i = 0; i < 400; i++) {
+      if (d.getDay() === weekday) {
+        const cand = combineLocalDateAndTime(d, hhmm);
+        if (cand.getTime() > lastSubmit.getTime()) return cand;
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return new Date(lastSubmit.getTime() + 8 * 86400000);
+  }
+
+  function nextMonthlyDeadlineAfter(lastSubmit, monthDay, hhmm) {
+    let cand = addMonthsClampDayFromDate(lastSubmit, 1, monthDay, hhmm);
+    if (cand.getTime() <= lastSubmit.getTime()) {
+      cand = addMonthsClampDayFromDate(lastSubmit, 2, monthDay, hhmm);
+    }
+    return cand;
+  }
+
+  function latestCustomSubmissionForUser(portal, username) {
+    const un = (username || "").trim().toLowerCase();
+    if (!un) return null;
+    let best = null;
+    for (const e of getCustomPortalEntriesArrayForPortal(portal)) {
+      const by = (e.submittedBy || "").trim().toLowerCase();
+      if (!by || by !== un) continue;
+      const t = getEntrySubmittedTime(e);
+      if (t && !Number.isNaN(t.getTime()) && (!best || t.getTime() > best.getTime())) best = t;
+    }
+    return best;
+  }
+
+  /**
+   * @returns {"neutral"|"pending"|"ok"|"due"}
+   */
+  function computeCustomPortalSubmissionTimerStatus(portal, username) {
+    const st = portal && portal.submissionTimer;
+    if (!st || !st.enabled || st.mode === "off") return "neutral";
+    const now = new Date();
+    const last = latestCustomSubmissionForUser(portal, username);
+    const { mode, intervalValue, timeOfDay, weeklyWeekday, monthlyDay } = st;
+
+    switch (mode) {
+      case "interval_hours": {
+        if (!last) return "due";
+        const next = new Date(last.getTime() + intervalValue * 3600000);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      case "interval_days": {
+        if (!last) return "due";
+        const next = addLocalDaysAtTime(last, intervalValue, timeOfDay);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      case "interval_weeks": {
+        if (!last) return "due";
+        const next = addLocalDaysAtTime(last, intervalValue * 7, timeOfDay);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      case "daily": {
+        const todayStr = localYmdFromDate(now);
+        const deadlineToday = combineLocalDateAndTime(startOfLocalDay(now), timeOfDay);
+        if (last && localYmdFromDate(last) === todayStr) return "ok";
+        if (now.getTime() < deadlineToday.getTime()) return "pending";
+        return "due";
+      }
+      case "alternate_day": {
+        if (!last) return "due";
+        const next = addLocalDaysAtTime(last, 2, timeOfDay);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      case "weekly": {
+        if (!last) return "due";
+        const next = nextWeeklyDeadlineAfter(last, weeklyWeekday, timeOfDay);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      case "monthly": {
+        if (!last) return "due";
+        const next = nextMonthlyDeadlineAfter(last, monthlyDay, timeOfDay);
+        return now.getTime() < next.getTime() ? "ok" : "due";
+      }
+      default:
+        return "neutral";
+    }
+  }
+
+  /** Role picker: CSS suffix neutral (blue), ok (green), due (red). Built-in roles = always neutral. */
+  function getRolePickerTimerVisualClass(role, username) {
+    if (role === "dashboard" || role === "admin") return "role-picker-timer-neutral";
+    const pid = parsePortalIdFromRole(role);
+    if (!pid) return "role-picker-timer-neutral";
+    const portal = findCustomPortalById(pid);
+    if (!portal) return "role-picker-timer-neutral";
+    const s = computeCustomPortalSubmissionTimerStatus(portal, username);
+    if (s === "neutral" || s === "pending") return "role-picker-timer-neutral";
+    if (s === "ok") return "role-picker-timer-ok";
+    return "role-picker-timer-due";
   }
 
   /** Accept array, object map, or JSON string (double-encoded storage). */
@@ -1693,7 +1884,8 @@
     ordered.forEach((role) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "btn primary role-picker-btn";
+      const timerCls = getRolePickerTimerVisualClass(role, sessionUsername);
+      btn.className = `btn primary role-picker-btn ${timerCls}`;
       btn.dataset.role = role;
       btn.textContent = getRoleLabel(role);
       container.appendChild(btn);
@@ -3799,6 +3991,62 @@
     if (p) openAdminCustomEditor(p);
   }
 
+  function syncAdminSubmissionTimerFieldsVisibility() {
+    const modeEl = $("#admin-custom-timer-mode");
+    const mode = modeEl && modeEl.value ? modeEl.value : "off";
+    const wInt = $("#admin-custom-timer-interval-wrap");
+    const wTime = $("#admin-custom-timer-time-wrap");
+    const wWd = $("#admin-custom-timer-weekday-wrap");
+    const wMd = $("#admin-custom-timer-monthday-wrap");
+    const intLab = $("#admin-custom-timer-interval-label");
+    const show = (el, on) => {
+      if (el) el.hidden = !on;
+    };
+    show(wInt, mode.startsWith("interval_"));
+    show(wTime, mode !== "off" && mode !== "interval_hours");
+    show(wWd, mode === "weekly");
+    show(wMd, mode === "monthly");
+    if (intLab) {
+      if (mode === "interval_hours") intLab.textContent = "Hours between required submissions";
+      else if (mode === "interval_days") intLab.textContent = "Days between deadlines (same clock time)";
+      else if (mode === "interval_weeks") intLab.textContent = "Weeks between deadlines (same clock time)";
+      else intLab.textContent = "Interval";
+    }
+  }
+
+  function readSubmissionTimerFromAdminForm() {
+    const modeEl = $("#admin-custom-timer-mode");
+    let mode = modeEl && modeEl.value ? String(modeEl.value).trim() : "off";
+    if (!SUBMISSION_TIMER_MODES.has(mode)) mode = "off";
+    const enabled = mode !== "off";
+    let intervalValue = parseInt($("#admin-custom-timer-interval") && $("#admin-custom-timer-interval").value, 10);
+    if (!Number.isFinite(intervalValue) || intervalValue < 1) intervalValue = 1;
+    if (mode === "interval_hours" && intervalValue > 8760) intervalValue = 8760;
+    if ((mode === "interval_days" || mode === "interval_weeks") && intervalValue > 366) intervalValue = 366;
+    const timeIn = $("#admin-custom-timer-time");
+    let timeOfDay = timeIn && timeIn.value ? String(timeIn.value).trim() : "09:00";
+    if (/^\d{1,2}:\d{2}$/.test(timeOfDay)) {
+      const p = timeOfDay.split(":");
+      const hh = Math.min(23, Math.max(0, parseInt(p[0], 10)));
+      const mm = Math.min(59, Math.max(0, parseInt(p[1], 10)));
+      timeOfDay = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    } else timeOfDay = "09:00";
+    let weeklyWeekday = parseInt($("#admin-custom-timer-weekday") && $("#admin-custom-timer-weekday").value, 10);
+    if (!Number.isFinite(weeklyWeekday) || weeklyWeekday < 0 || weeklyWeekday > 6) weeklyWeekday = 1;
+    let monthlyDay = parseInt($("#admin-custom-timer-monthday") && $("#admin-custom-timer-monthday").value, 10);
+    if (!Number.isFinite(monthlyDay) || monthlyDay < 1 || monthlyDay > 28) monthlyDay = 1;
+    return normalizeSubmissionTimerFromPortal({
+      submissionTimer: {
+        enabled,
+        mode,
+        intervalValue,
+        timeOfDay,
+        weeklyWeekday,
+        monthlyDay,
+      },
+    });
+  }
+
   function openAdminCustomEditor(portal) {
     const editor = $("#admin-custom-editor");
     const hid = $("#admin-custom-edit-id");
@@ -3833,6 +4081,18 @@
     const remDays = $("#admin-custom-reminder-days");
     if (remEn) remEn.checked = !!(portal && portal.followUpReminderEnabled);
     if (remDays) remDays.value = String(portal && portal.followUpReminderDays ? portal.followUpReminderDays : 7);
+    const st = normalizeSubmissionTimerFromPortal(portal || {});
+    const tm = $("#admin-custom-timer-mode");
+    const ti = $("#admin-custom-timer-interval");
+    const tt = $("#admin-custom-timer-time");
+    const tw = $("#admin-custom-timer-weekday");
+    const tmd = $("#admin-custom-timer-monthday");
+    if (tm) tm.value = st.enabled && st.mode !== "off" ? st.mode : "off";
+    if (ti) ti.value = String(st.intervalValue || 1);
+    if (tt) tt.value = st.timeOfDay || "09:00";
+    if (tw) tw.value = String(st.weeklyWeekday != null ? st.weeklyWeekday : 1);
+    if (tmd) tmd.value = String(st.monthlyDay != null ? st.monthlyDay : 1);
+    syncAdminSubmissionTimerFieldsVisibility();
     setAdminCustomMsg("", null);
     updateAdminCustomTabHighlight();
     editor.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -4608,6 +4868,10 @@
   if (adminCustomNew) {
     adminCustomNew.addEventListener("click", () => openAdminCustomEditor(null));
   }
+  const adminCustomTimerMode = $("#admin-custom-timer-mode");
+  if (adminCustomTimerMode) {
+    adminCustomTimerMode.addEventListener("change", syncAdminSubmissionTimerFieldsVisibility);
+  }
   const adminCustomCancel = $("#admin-custom-cancel");
   if (adminCustomCancel) {
     adminCustomCancel.addEventListener("click", () => closeAdminCustomEditor());
@@ -4656,6 +4920,7 @@
       let followUpReminderDays = parseInt(remDaysIn && remDaysIn.value, 10);
       if (!Number.isFinite(followUpReminderDays) || followUpReminderDays < 1) followUpReminderDays = 7;
       if (followUpReminderDays > 366) followUpReminderDays = 366;
+      const submissionTimer = readSubmissionTimerFromAdminForm();
       const newPortal = {
         id: editId || portalNewId(),
         title,
@@ -4663,6 +4928,7 @@
         credentials: creds.map((c) => ({ username: c.username, password: c.password })),
         followUpReminderEnabled: !!(remEn && remEn.checked),
         followUpReminderDays,
+        submissionTimer,
       };
       void (async () => {
         const list = getCustomPortalsList().slice();
