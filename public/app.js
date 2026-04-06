@@ -272,13 +272,10 @@
     return cand;
   }
 
-  function latestCustomSubmissionForUser(portal, username) {
-    const un = (username || "").trim().toLowerCase();
-    if (!un) return null;
+  /** Latest submission time for this portal from anyone (shared timer for all assigned logins). */
+  function latestCustomSubmissionForPortal(portal) {
     let best = null;
     for (const e of getCustomPortalEntriesArrayForPortal(portal)) {
-      const by = (e.submittedBy || "").trim().toLowerCase();
-      if (!by || by !== un) continue;
       const t = getEntrySubmittedTime(e);
       if (t && !Number.isNaN(t.getTime()) && (!best || t.getTime() > best.getTime())) best = t;
     }
@@ -288,11 +285,11 @@
   /**
    * @returns {"neutral"|"pending"|"ok"|"due"}
    */
-  function computeCustomPortalSubmissionTimerStatus(portal, username) {
+  function computeCustomPortalSubmissionTimerStatus(portal) {
     const st = portal && portal.submissionTimer;
     if (!st || !st.enabled || st.mode === "off") return "neutral";
     const now = new Date();
-    const last = latestCustomSubmissionForUser(portal, username);
+    const last = latestCustomSubmissionForPortal(portal);
     const { mode, intervalValue, timeOfDay, weeklyWeekday, monthlyDay } = st;
 
     switch (mode) {
@@ -339,13 +336,13 @@
   }
 
   /** Role picker: CSS suffix neutral (blue), ok (green), due (red). Built-in roles = always neutral. */
-  function getRolePickerTimerVisualClass(role, username) {
+  function getRolePickerTimerVisualClass(role) {
     if (role === "dashboard" || role === "admin") return "role-picker-timer-neutral";
     const pid = parsePortalIdFromRole(role);
     if (!pid) return "role-picker-timer-neutral";
     const portal = findCustomPortalById(pid);
     if (!portal) return "role-picker-timer-neutral";
-    const s = computeCustomPortalSubmissionTimerStatus(portal, username);
+    const s = computeCustomPortalSubmissionTimerStatus(portal);
     if (s === "neutral" || s === "pending") return "role-picker-timer-neutral";
     if (s === "ok") return "role-picker-timer-ok";
     return "role-picker-timer-due";
@@ -1884,7 +1881,7 @@
     ordered.forEach((role) => {
       const btn = document.createElement("button");
       btn.type = "button";
-      const timerCls = getRolePickerTimerVisualClass(role, sessionUsername);
+      const timerCls = getRolePickerTimerVisualClass(role);
       btn.className = `btn primary role-picker-btn ${timerCls}`;
       btn.dataset.role = role;
       btn.textContent = getRoleLabel(role);
